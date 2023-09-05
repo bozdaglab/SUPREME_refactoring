@@ -1,0 +1,38 @@
+[tool.black]
+line-length = 88
+include = '\.pyi?$'
+exclude = '''
+/(
+    \.git
+    \.txt
+  | \.hg
+  | \.mypy_cache
+  | \.tox
+  | \.venv
+  | _build
+  | buck-out
+  | build
+  | dist
+)/
+
+[tool.flake]
+ignore = [
+  "E501",
+  "B004",
+  "B006",
+  "B007",
+  "B008",
+  "B015",
+  "B016",
+  "B023",
+  "B024",
+  "B027",
+  "B904",
+  "B905",
+]
+select = ["B", "C", "E", "F", "I001", "W"]
+
+known-local-folder = [
+    'lib/supreme_model/src'
+    'project/supreme/src
+]
