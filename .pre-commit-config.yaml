@@ -1,0 +1,44 @@
+repos:
+-   repo: https://github.com/pycqa/isort
+    rev: 5.12.0
+    hooks:
+    - id: isort
+      args: ["--profile", "black", "--filter-files", "--resolve-all-configs"]
+-   repo: https://github.com/ambv/black
+    rev: 22.12.0
+    hooks:
+    - id: black
+      language_version: python3.8
+    - id: black-jupyter
+      language_version: python3.8
+-   repo: https://github.com/pycqa/flake8
+    rev: 6.0.0
+    hooks:
+    - id: flake8
+-   repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v0.991
+    hooks:
+    - id: mypy
+      files: 'libs/acx-preprocess/src/.*py$'
+-   repo: https://github.com/kynan/nbstripout
+    rev: 0.6.1
+    hooks:
+    - id: nbstripout
+  # pre-commit built-in hooks
+- repo: https://github.com/pre-commit/pre-commit-hooks
+  rev: v4.4.0
+  hooks:
+  - id: requirements-txt-fixer
+    exclude: "requirements-dit.txt"
+  - id: check-merge-conflict
+  - id: no-commit-to-branch
+  - id: check-added-large-files
+  # - id: check-docstring-first
+  - id: check-executables-have-shebangs
+  - id: check-json
+  - id: check-xml
+  - id: check-yaml
+  - id: debug-statements
+  - id: end-of-file-fixer
+    exclude: "[/?\\w*/?]*(.xml|dummy_diff.json)"
+  - id: trailing-whitespace
