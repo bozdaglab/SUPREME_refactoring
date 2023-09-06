@@ -1,17 +1,13 @@
 import logging
 
+import numpy as np
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import accuracy_score, f1_score
-from sklearn.model_selection import (
-    RandomizedSearchCV,
-    RepeatedStratifiedKFold,
-    train_test_split,
-)
+from sklearn.model_selection import RandomizedSearchCV
 from sklearn.neural_network import MLPClassifier
 from sklearn.svm import SVC
-from torch_geometric.data import Data
 from xgboost import XGBClassifier
 
+from project.supreme.src.settings import X_TIME
 
 logger = logging.getLogger(__name__)
 
@@ -20,11 +16,11 @@ class MLModels:
     def __init__(self, model, x_train, y_train):
         self.model = model
         self.x_train = x_train
-        self.y_train = x_train
+        self.y_train = y_train
 
     def train_ml_model_factory(self):
         models = {
-            "LR": self.MLP,
+            "MLP": self.MLP,
             "RF": self.RF,
             "XGB": self.XGB,
             "SVM": self.SVM,
@@ -34,7 +30,7 @@ class MLModels:
         except:
             pass
 
-    def MLP():
+    def MLP(self):
         params = {
             "hidden_layer_sizes": [
                 (16,),
@@ -62,14 +58,17 @@ class MLModels:
             verbose=0,
         )
         search.fit(self.x_train, self.y_train)
-        return MLPClassifier(
-            solver="adam",
-            activation="relu",
-            early_stopping=True,
-            hidden_layer_sizes=search.best_params_["hidden_layer_sizes"],
+        return (
+            MLPClassifier(
+                solver="adam",
+                activation="relu",
+                early_stopping=True,
+                hidden_layer_sizes=search.best_params_["hidden_layer_sizes"],
+            ),
+            search,
         )
 
-    def XGBoost():
+    def XGB(self):
         params = {
             "reg_alpha": range(0, 6, 1),
             "reg_lambda": range(1, 5, 1),
@@ -78,7 +77,7 @@ class MLModels:
         fit_params = {
             "early_stopping_rounds": 10,
             "eval_metric": "mlogloss",
-            "eval_set": [(X_train, y_train)],
+            "eval_set": [(self.x_train, self.y_train)],
         }
 
         search = RandomizedSearchCV(
@@ -100,19 +99,22 @@ class MLModels:
 
         search.fit(self.x_train, self.y_train)
 
-        return XGBClassifier(
-            use_label_encoder=False,
-            objective="multi:softprob",
-            eval_metric="mlogloss",
-            verbosity=0,
-            n_estimators=1000,
-            fit_params=fit_params,
-            reg_alpha=search.best_params_["reg_alpha"],
-            reg_lambda=search.best_params_["reg_lambda"],
-            learning_rate=search.best_params_["learning_rate"],
+        return (
+            XGBClassifier(
+                use_label_encoder=False,
+                objective="multi:softprob",
+                eval_metric="mlogloss",
+                verbosity=0,
+                n_estimators=1000,
+                fit_params=fit_params,
+                reg_alpha=search.best_params_["reg_alpha"],
+                reg_lambda=search.best_params_["reg_lambda"],
+                learning_rate=search.best_params_["learning_rate"],
+            ),
+            search,
         )
 
-    def RF():
+    def RF(self):
         max_depth = [int(x) for x in np.linspace(10, 110, num=11)]
         max_depth.append(None)
         params = {
@@ -128,9 +130,12 @@ class MLModels:
             verbose=0,
         )
         search.fit(self.x_train, self.y_train)
-        return RandomForestClassifier(n_estimators=search.best_params_["n_estimators"])
+        return (
+            RandomForestClassifier(n_estimators=search.best_params_["n_estimators"]),
+            search,
+        )
 
-    def SVM():
+    def SVM(self):
         params = {
             "C": [0.001, 0.01, 0.1, 1, 10, 100, 1000],
             "gamma": [1, 0.1, 0.01, 0.001],
@@ -145,4 +150,7 @@ class MLModels:
             verbose=0,
         )
         search.fit(self.x_train, self.y_train)
-        model = SVC(C=search.best_params_["C"], gamma=search.best_params_["gamma"])
+        return (
+            SVC(C=search.best_params_["C"], gamma=search.best_params_["gamma"]),
+            search,
+        )

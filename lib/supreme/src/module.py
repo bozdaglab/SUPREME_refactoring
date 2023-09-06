@@ -28,3 +28,24 @@ class Net(torch.nn.Module):
         x = F.dropout(x, training=self.training)
         x = self.conv2(x, edge_index, edge_weight)
         return x, x_emb
+
+
+def train(model, optimizer, data, criterion):
+    model.train()
+    optimizer.zero_grad()
+    out, emb1 = model(data)
+    loss = criterion(out[data.train_mask], data.y[data.train_mask])
+    loss.backward()
+    optimizer.step()
+    return emb1
+
+
+def validate(model, criterion, data):
+    model.eval()
+    with torch.no_grad():
+        out, emb2 = model(data)
+        pred = out.argmax(dim=1)
+        loss = criterion(out[data.valid_mask], data.y[data.valid_mask])
+    return loss, emb2
+
+criterion = torch.nn.CrossEntropyLoss()
