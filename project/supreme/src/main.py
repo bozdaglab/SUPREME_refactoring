@@ -125,5 +125,5 @@ for trials in range(len(trial_combs)):
 
 
 end = time.time()
-print("It took " + str(round(end - start, 1)) + " seconds in total.")
-print("SUPREME is done.")
+logger.info(f"It took {round(end - start, 1)} seconds in total.")
+logger.info("SUPREME is done.")
