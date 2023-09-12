@@ -23,7 +23,7 @@ pip install pre-commit
 ```shell script
 pip install -r requirements.txt
 pip install -r requirements-dev.txt
-pip install -e ../../lib/supreme/
+pip install -e ../../Personal/SUPREME_refactoring/lib/supreme
 ```
 
 

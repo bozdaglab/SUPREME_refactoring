@@ -24,7 +24,7 @@ PATH = Path(__file__).parent.parent.parent.parent / "data"
 
 LOGGING_LEVEL = os.environ.get("LOGGING_LEVEL")
 ADD_RAW_FEAT = bool(strtobool(os.environ.get("ADD_RAW_FEAT")))
-INT_MOTHOD = os.environ.get("MLP")
+INT_MOTHOD = os.environ.get("INT_MOTHOD")
 # X_TIME2 = os.environ.get("X_TIME2")
 X_TIME2 = 10
 # MAX_EPOCHS = os.environ.get("MAX_EPOCHS")
@@ -34,7 +34,7 @@ MAX_EPOCHS = 500
 MIN_EPOCHS = 200
 PATIENCE = 30
 OPTIONAL_FEATURE_SELECTION = bool(
-    strtobool(os.environ.get("OPTIONAL_FEATURE_SELECTION"))
+     strtobool(os.environ.get("OPTIONAL_FEATURE_SELECTION"))
 )
 # BORUTA_RUNS = os.environ.get("BORUTA_RUNS")
 BORUTA_RUNS = 100
