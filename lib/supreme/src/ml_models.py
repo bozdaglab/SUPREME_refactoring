@@ -24,6 +24,7 @@ class MLModels:
             "RF": self.RF,
             "XGB": self.XGB,
             "SVM": self.SVM,
+            "KM": self.KM,
         }
         try:
             return models.get(self.model)()
@@ -154,3 +155,5 @@ class MLModels:
             SVC(C=search.best_params_["C"], gamma=search.best_params_["gamma"]),
             search,
         )
+    def KM():
+        pass

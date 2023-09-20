@@ -1,15 +1,28 @@
-from project.supreme.src.settings import (LEARNING_RATE, HIDDEN_SIZE, X_TIME2, MAX_EPOCHS, MIN_EPOCHS, PATIENCE
-, BORUTA_RUNS, PATH, NODE_NETWORKS, FEATURE_SELECTION_PER_NETWORK, TOP_FEATURES_PER_NETWORK, NODE_NETWORKS)
-import pickle5 as pickle
-from lib.supreme.src.module import Net
+import statistics
+
 # import rpy2.robjects as robjects
 import numpy as np
-import torch
-from torch_geometric.data import Data
-from module import train, validate, criterion
-import statistics
 import pandas as pd
+import pickle5 as pickle
+import torch
+from module import criterion, train, validate
 from sklearn.model_selection import RepeatedStratifiedKFold
+from torch_geometric.data import Data
+
+from lib.supreme.src.module import Net
+from project.supreme.src.settings import (
+    BORUTA_RUNS,
+    FEATURE_SELECTION_PER_NETWORK,
+    HIDDEN_SIZE,
+    LEARNING_RATE,
+    MAX_EPOCHS,
+    MIN_EPOCHS,
+    NODE_NETWORKS,
+    PATH,
+    PATIENCE,
+    TOP_FEATURES_PER_NETWORK,
+    X_TIME2,
+)
 
 DEVICE = torch.device("cpu")
 
@@ -20,7 +33,7 @@ def node_feature_generation(SAMPLE_PATH):
         file = SAMPLE_PATH / f"{netw}.pkl"
         with open(file, "rb") as f:
             feat = pickle.load(f)
-            if not any(FEATURE_SELECTION_PER_NETWORK):
+            if not any(FEATURE_SELECTION_PER_NETWORK): # any does not make sense. We need it seperate for each dataset
                 values = feat.values
             else:
                 if (

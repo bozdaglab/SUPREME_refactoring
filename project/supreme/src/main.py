@@ -75,7 +75,7 @@ file = SAMPLE_PATH / "labels.pkl"
 with open(file, "rb") as f:
     labels = pickle.load(f)
 
-file = SAMPLE_PATH / "mask_values.pkl"
+file = SAMPLE_PATH / "mask_values.pkl" # csv file
 if os.path.exists(file):
     with open(file, "rb") as f:
         train_valid_idx, test_idx = pickle.load(f)
