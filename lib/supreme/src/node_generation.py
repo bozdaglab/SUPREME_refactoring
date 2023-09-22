@@ -3,14 +3,14 @@ import statistics
 # import rpy2.robjects as robjects
 import numpy as np
 import pandas as pd
-import pickle5 as pickle
+import pickle
 import torch
 from module import criterion, train, validate
 from sklearn.model_selection import RepeatedStratifiedKFold
 from torch_geometric.data import Data
 
-from lib.supreme.src.module import Net
-from project.supreme.src.settings import (
+from module import Net
+from settings import (
     BORUTA_RUNS,
     FEATURE_SELECTION_PER_NETWORK,
     HIDDEN_SIZE,

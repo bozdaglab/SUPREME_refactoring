@@ -7,7 +7,15 @@ import time
 import warnings
 
 import numpy as np
-import pickle5 as pickle
+import pickle
+import sys
+from dotenv import load_dotenv, find_dotenv
+load_dotenv(find_dotenv())
+LIB= os.environ.get("LIB")
+PROJECT= os.environ.get("PROJECT")
+
+sys.path.append(LIB)
+sys.path.append(PROJECT)
 from node_generation import node_embedding_generation, node_feature_generation
 from set_logging import set_log_config
 from settings import (
@@ -20,7 +28,7 @@ from settings import (
 )
 from sklearn.model_selection import train_test_split
 
-from lib.supreme.src.train_mls import ml
+from train_mls import ml
 
 set_log_config()
 logger = logging.getLogger()
@@ -88,9 +96,9 @@ start = time.time()
 
 logger.info("SUPREME is running..")
 new_x = node_feature_generation(SAMPLE_PATH)
-node_embedding_generation(
-    SAMPLE_PATH, new_x, train_valid_idx, labels, test_idx, save_path
-)
+# node_embedding_generation(
+#     SAMPLE_PATH, new_x, train_valid_idx, labels, test_idx, save_path
+# )
 start2 = time.time()
 
 logger.info(

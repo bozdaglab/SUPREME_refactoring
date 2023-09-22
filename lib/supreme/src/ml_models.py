@@ -1,5 +1,5 @@
 import logging
-
+from sklearn.cluster import KMeans
 import numpy as np
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import RandomizedSearchCV
@@ -7,7 +7,7 @@ from sklearn.neural_network import MLPClassifier
 from sklearn.svm import SVC
 from xgboost import XGBClassifier
 
-from project.supreme.src.settings import X_TIME
+from settings import X_TIME
 
 logger = logging.getLogger(__name__)
 
@@ -155,5 +155,27 @@ class MLModels:
             SVC(C=search.best_params_["C"], gamma=search.best_params_["gamma"]),
             search,
         )
-    def KM():
-        pass
+    def KM(self):
+        params = {
+            "n_clusters": [5],  
+            "init": ["k-means++", "random"],  
+            "n_init": [10, 20, 30], 
+        }
+        
+        search = RandomizedSearchCV(
+            KMeans(),
+            param_distributions=params,
+            cv=4,
+            n_iter=X_TIME,
+            verbose=0,
+        )
+        
+        search.fit(self.x_train)
+        
+        best_n_clusters = search.best_params_["n_clusters"]
+        best_init = search.best_params_["init"]
+        best_n_init = search.best_params_["n_init"]
+        
+        kmeans_model = KMeans(n_clusters=best_n_clusters, init=best_init, n_init=best_n_init)
+    
+        return kmeans_model, search

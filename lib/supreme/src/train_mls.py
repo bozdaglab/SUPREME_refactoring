@@ -5,13 +5,13 @@ from collections import defaultdict
 
 import numpy as np
 import pandas as pd
-import rpy2.robjects as robjects
+# import rpy2.robjects as robjects
 import torch
 from sklearn.metrics import accuracy_score, f1_score
 from torch_geometric.data import Data
 
-from lib.supreme.src.ml_models import MLModels
-from project.supreme.src.settings import (
+from ml_models import MLModels
+from settings import (
     ADD_RAW_FEAT,
     BORUTA_RUNS,
     BORUTA_TOP_FEATURES,
@@ -37,7 +37,7 @@ def ml(save_path, dataset_name, trial_combs, trials, labels, train_valid_idx, te
 
     if len(NODE_NETWORKS2) > 1:
         for netw_base in NODE_NETWORKS2[1:]:
-            emb_file = save_path + "Emb_" + netw_base + ".pkl"
+            emb_file =  save_path / f"Emb_{netw_base}.pkl"
             with open(emb_file, "rb") as f:
                 cur_emb = pickle.load(f)
             emb = torch.cat((emb, cur_emb), dim=1)
