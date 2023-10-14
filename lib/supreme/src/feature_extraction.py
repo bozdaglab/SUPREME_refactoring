@@ -1,5 +1,9 @@
+from typing import List
+
 import numpy as np
 import pandas as pd
+import xgboost as xgb
+from boruta import BorutaPy
 from feature_engine.selection import SelectByShuffling, SelectBySingleFeaturePerformance
 from lightgbm import LGBMClassifier
 from mlxtend.feature_selection import SequentialFeatureSelector as sfs
@@ -12,12 +16,10 @@ from sklearn.feature_selection import (
     mutual_info_classif,
     r_regression,
 )
-import xgboost as xgb
-from sklearn.model_selection import GridSearchCV
-from boruta import BorutaPy
+from sklearn.linear_model import Lasso, LogisticRegression
 from sklearn.metrics import accuracy_score, make_scorer
+from sklearn.model_selection import GridSearchCV
 
-from sklearn.linear_model import LogisticRegression, Lasso
 
 class FeatureALgo:
     def __init__(self) -> None:
@@ -44,7 +46,7 @@ class FeatureALgo:
         lasso_gridsearch = GridSearchCV(lasso, param_grid, scoring=scorer, cv=5)
         lasso_gridsearch.fit(X, y)
         return X.columns[lasso_gridsearch.best_estimator_.coef_ > coef]
-    
+
     def select_rff(self, X, y):
         rfe_selector = RFE(
             estimator=LogisticRegression(),
@@ -128,18 +130,15 @@ class FeatureALgo:
         return [
             X.columns[i] for i in range(len(selected_features)) if selected_features[i]
         ]
-    
+
     def MI(application_train, y):
-        mi_result = mutual_info_classif(
-            application_train, y, random_state=42
-        )
+        mi_result = mutual_info_classif(application_train, y, random_state=42)
         features_list = application_train.columns.to_list()
         last_featutres = [f for f, v in zip(features_list, mi_result) if v > 0]
         for i in application_train:
             if i not in last_featutres:
                 application_train = application_train.drop(i, axis=1)
         return application_train
-
 
 
 def drop_rows(application_train: pd.DataFrame, gh) -> pd.DataFrame:
@@ -153,6 +152,7 @@ def drop_rows(application_train: pd.DataFrame, gh) -> pd.DataFrame:
     for index_to_remove in application_train.loc[a_series].index:
         application_train = application_train.drop(index_to_remove)
     return application_train.reset_index(drop=True)
+
 
 def select_features(application_train, numb_thr=2):
     y = application_train["Survived"]
@@ -173,6 +173,4 @@ def select_features(application_train, numb_thr=2):
     application_train = drop_rows(X, gh)
     application_train = feature_selection.MI(application_train, y)
     application_train[y.name] = y
-    return  application_train
-
-
+    return application_train
