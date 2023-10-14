@@ -34,7 +34,10 @@ def train(model, optimizer, data, criterion):
     model.train()
     optimizer.zero_grad()
     out, emb1 = model(data)
-    loss = criterion(out[data.train_mask], data.y[data.train_mask])
+    loss = criterion(
+        out[data.train_mask],
+        torch.tensor(data.y.values.reshape(1, -1)[0])[data.train_mask],
+    )
     loss.backward()
     optimizer.step()
     return emb1
@@ -44,8 +47,12 @@ def validate(model, criterion, data):
     model.eval()
     with torch.no_grad():
         out, emb2 = model(data)
-        pred = out.argmax(dim=1)
-        loss = criterion(out[data.valid_mask], data.y[data.valid_mask])
+        # pred = out.argmax(dim=1)
+        loss = criterion(
+            out[data.valid_mask],
+            torch.tensor(data.y.values.reshape(1, -1)[0])[data.valid_mask],
+        )
     return loss, emb2
+
 
 criterion = torch.nn.CrossEntropyLoss()
