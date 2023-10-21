@@ -9,7 +9,7 @@ import pandas as pd
 import torch
 from sklearn.metrics import accuracy_score, f1_score
 from torch_geometric.data import Data
-
+import os
 from ml_models import MLModels
 from settings import (
     ADD_RAW_FEAT,
@@ -31,7 +31,7 @@ DEVICE = torch.device("cpu")
 
 
 def ml(trial_combs, trials, labels, train_valid_idx, test_idx):
-    NODE_NETWORKS2 = [NODE_NETWORKS[i] for i in trial_combs[trials]]
+    NODE_NETWORKS2 = [os.listdir(EMBEDDINGS)[i] for i in trial_combs[trials]]
     if len(NODE_NETWORKS2) == 1:
         emb = pd.read_csv(f"{EMBEDDINGS}/{NODE_NETWORKS2[0]}")
     else:

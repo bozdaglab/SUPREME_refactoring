@@ -67,13 +67,11 @@ def node_embedding_generation(
                         x=new_x,
                         edge_index=torch.tensor(
                             edge_index[edge_index.columns[0:2]].transpose().values,
-                            device=DEVICE,
-                        ).long(),
+                            device=DEVICE).long(),
                         edge_attr=torch.tensor(
                             edge_index[edge_index.columns[2]].transpose().values,
-                            device=DEVICE,
-                        ).float(),
-                        y=torch.tensor(labels[col].values),
+                            device=DEVICE).float(),
+                        y=torch.tensor(labels[col].values, dtype=torch.float32),
                     )
                     X = data.x[train_valid_idx.indices]
                     y = data.y[train_valid_idx.indices]
@@ -95,7 +93,7 @@ def node_embedding_generation(
                     data.test_mask = torch.tensor(test_mask, device=DEVICE)
 
                     in_size = data.x.shape[1]
-                    out_size = torch.tensor(data.y).shape[0]
+                    out_size = 1
                     model = Net(in_size=in_size, hid_size=hid_size, out_size=out_size)
                     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
 
@@ -126,5 +124,5 @@ def node_embedding_generation(
                     # best_emb_hs = hid_size
                     selected_emb = this_emb
 
-        embedding_path = f"{EMBEDDINGS}/{edge_file.split('.csv')[0]}"
-        pd.DataFrame(selected_emb).to_csv(f"{embedding_path}_{col}.csv", index=False)
+            embedding_path = f"{EMBEDDINGS}/{edge_file.split('.csv')[0]}"
+            pd.DataFrame(selected_emb).to_csv(f"{embedding_path}_{col}.csv", index=False)
