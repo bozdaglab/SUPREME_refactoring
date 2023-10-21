@@ -1,10 +1,7 @@
 # SUPREME
 
 ## Local install and Setup
-## Please get to project/ supreme folder first
-   ```shell script
-  cd project/supreme
-  ```
+
 1. Create environment with pytorch installed. Use `cpuonly` version if you don't have an nvidia gpu locally:
 
    ```shell script

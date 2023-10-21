@@ -9,18 +9,22 @@ load_dotenv(find_dotenv())
 
 FORMAT = "%(asctime)s.%(msecs)03d %(name)-8s %(levelname)-4s %(message)s"
 DATE_FORMAT = "%m-%d %H:%M:%S"
-FEATURE_NETWORKS_INTEGRATION = [
-    "clinical",
-    "cna",
-    "exp",
-]
-NODE_NETWORKS = ["clinical", "cna", "exp"]
+BASE_DATAPATH = Path(__file__).parent.parent.parent.parent / "data" / "sample_data"
+EMBEDDINGS = BASE_DATAPATH / "embeddings"
+EDGES = BASE_DATAPATH / "edges"
+MASK = BASE_DATAPATH / "mask_values"
+LABELS = BASE_DATAPATH / "labels"
+
+
+FEATURE_NETWORKS_INTEGRATION = [i  for i in os.listdir(BASE_DATAPATH) if i.endswith(".csv")]
+
+NODE_NETWORKS = FEATURE_NETWORKS_INTEGRATION.copy()
+
 LEARNING_RATE = [0.01, 0.001, 0.0001]
 HIDDEN_SIZE = [32, 64, 128, 256]
 X_TIME = 50
 FEATURE_SELECTION_PER_NETWORK = [False, False, False]
 TOP_FEATURES_PER_NETWORK = [50, 50, 50]
-PATH = Path(__file__).parent.parent.parent.parent / "data"
 
 LOGGING_LEVEL = os.environ.get("LOGGING_LEVEL")
 ADD_RAW_FEAT = bool(strtobool(os.environ.get("ADD_RAW_FEAT")))

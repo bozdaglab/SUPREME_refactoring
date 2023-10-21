@@ -5,44 +5,45 @@ import statistics
 import numpy as np
 import pandas as pd
 import torch
+import os
+from itertools import product
 from feature_extraction import FeatureALgo
 from module import Net, criterion, train, validate
-from settings import (FEATURE_SELECTION_PER_NETWORK, HIDDEN_SIZE,
+from settings import (EDGES, FEATURE_SELECTION_PER_NETWORK, HIDDEN_SIZE,
                       LEARNING_RATE, MAX_EPOCHS, MIN_EPOCHS, NODE_NETWORKS,
-                      PATIENCE, TOP_FEATURES_PER_NETWORK, X_TIME2)
+                      PATIENCE, TOP_FEATURES_PER_NETWORK, X_TIME2, EMBEDDINGS)
 from sklearn.model_selection import RepeatedStratifiedKFold
 from torch_geometric.data import Data
-
+from helper import masking_indexes
 DEVICE = torch.device("cpu")
 
 
-def node_feature_generation(SAMPLE_PATH):
-    is_first = 0
-    for netw in NODE_NETWORKS:
-        file = SAMPLE_PATH / f"{netw}.pkl"
-        with open(file, "rb") as f:
-            feat = pickle.load(f)
-            if not any(
-                FEATURE_SELECTION_PER_NETWORK
-            ):  # any does not make sense. We need it seperate for each dataset
+def node_feature_generation(BASE_DATAPATH):
+    is_first = True
+    for file in NODE_NETWORKS:
+        feat = pd.read_csv(f"{BASE_DATAPATH}/{file}")
+        feat = feat.drop("Unnamed: 0", axis=1)
+        if not any(
+            FEATURE_SELECTION_PER_NETWORK
+        ):  # any does not make sense. We need it seperate for each dataset
+            values = feat.values
+        else:
+            if (
+                TOP_FEATURES_PER_NETWORK[NODE_NETWORKS.index(netw)]
+                < feat.values.shape[1]
+            ):
+                topx = FeatureALgo().select_boruta("pass x and y")
+                topx = np.array(topx)
+                values = torch.tensor(topx.T, device=DEVICE)
+            elif (
+                TOP_FEATURES_PER_NETWORK[NODE_NETWORKS.index(netw)]
+                >= feat.values.shape[1]
+            ):
                 values = feat.values
-            else:
-                if (
-                    TOP_FEATURES_PER_NETWORK[NODE_NETWORKS.index(netw)]
-                    < feat.values.shape[1]
-                ):
-                    topx = FeatureALgo().select_boruta("pass x and y")
-                    topx = np.array(topx)
-                    values = torch.tensor(topx.T, device=DEVICE)
-                elif (
-                    TOP_FEATURES_PER_NETWORK[NODE_NETWORKS.index(netw)]
-                    >= feat.values.shape[1]
-                ):
-                    values = feat.values
 
-        if is_first == 0:
+        if is_first:
             new_x = torch.tensor(values, device=DEVICE).float()
-            is_first = 1
+            is_first = False
         else:
             new_x = torch.cat(
                 (new_x, torch.tensor(values, device=DEVICE).float()), dim=1
@@ -51,19 +52,17 @@ def node_feature_generation(SAMPLE_PATH):
 
 
 def node_embedding_generation(
-    SAMPLE_PATH, new_x, train_valid_idx, labels, test_idx, save_path
+    new_x, train_valid_idx, labels, test_idx
 ):
-    for n in range(len(NODE_NETWORKS)):
-        netw_base = SAMPLE_PATH / f"edges_{NODE_NETWORKS[n]}.pkl"
-        with open(netw_base, "rb") as f:
-            edge_index = pickle.load(f)
+    for edge_file in os.listdir(EDGES):
+        edge_index = pd.read_csv(f"{EDGES}/{edge_file}")
         best_ValidLoss = np.Inf
+        # here we dont need the y anymore
 
-        for learning_rate in LEARNING_RATE:
-            for hid_size in HIDDEN_SIZE:
-                av_valid_losses = list()
-
-                for ii in range(X_TIME2):
+        for col in labels.iloc[:,0:3]:
+            for learning_rate, hid_size in product(LEARNING_RATE,HIDDEN_SIZE):
+                av_valid_losses = []
+                for _ in range(X_TIME2):
                     data = Data(
                         x=new_x,
                         edge_index=torch.tensor(
@@ -74,32 +73,29 @@ def node_embedding_generation(
                             edge_index[edge_index.columns[2]].transpose().values,
                             device=DEVICE,
                         ).float(),
-                        y=labels,
+                        y=torch.tensor(labels[col].values),
                     )
-                    X = data.x[train_valid_idx]
-                    y = data.y.values[train_valid_idx]
-                    rskf = RepeatedStratifiedKFold(n_splits=4, n_repeats=1)
+                    X = data.x[train_valid_idx.indices]
+                    y = data.y[train_valid_idx.indices]
+                    y_ph = labels.iloc[:,3][train_valid_idx.indices]
 
-                    for train_part, valid_part in rskf.split(X, y):
-                        train_idx = train_valid_idx[train_part]
-                        valid_idx = train_valid_idx[valid_part]
+                    rskf = RepeatedStratifiedKFold(n_splits=4, n_repeats=1)
+                    for train_part, valid_part in rskf.split(X, y_ph):
+                        train_idx = np.array(train_valid_idx.indices)[train_part]
+                        valid_idx = np.array(train_valid_idx.indices)[valid_part]
                         break
 
-                    train_mask = np.array(
-                        [i in set(train_idx) for i in range(data.x.shape[0])]
-                    )
-                    valid_mask = np.array(
-                        [i in set(valid_idx) for i in range(data.x.shape[0])]
-                    )
+                    train_mask = masking_indexes(data=data, indexes=train_idx)
+                    valid_mask = masking_indexes(data=data, indexes=valid_idx) 
+                    test_mask = masking_indexes(data=data, indexes=test_idx)
+                    
+
                     data.valid_mask = torch.tensor(valid_mask, device=DEVICE)
                     data.train_mask = torch.tensor(train_mask, device=DEVICE)
-                    test_mask = np.array(
-                        [i in set(test_idx) for i in range(data.x.shape[0])]
-                    )
                     data.test_mask = torch.tensor(test_mask, device=DEVICE)
 
                     in_size = data.x.shape[1]
-                    out_size = torch.unique(torch.tensor(data.y.values)).shape[0]
+                    out_size = torch.tensor(data.y).shape[0]
                     model = Net(in_size=in_size, hid_size=hid_size, out_size=out_size)
                     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
 
@@ -130,7 +126,5 @@ def node_embedding_generation(
                     # best_emb_hs = hid_size
                     selected_emb = this_emb
 
-        embedding_path = save_path / f"Emb_{NODE_NETWORKS[n]}"
-        with open(f"{embedding_path}.pkl", "wb") as f:
-            pickle.dump(selected_emb, f)
-            pd.DataFrame(selected_emb).to_csv(f"{embedding_path}.csv")
+        embedding_path = f"{EMBEDDINGS}/{edge_file.split('.csv')[0]}"
+        pd.DataFrame(selected_emb).to_csv(f"{embedding_path}_{col}.csv", index=False)
