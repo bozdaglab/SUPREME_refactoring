@@ -132,5 +132,7 @@ def node_embedding_generation(new_x, train_valid_idx, labels, test_idx):
                     # best_emb_hs = hid_size
                     selected_emb = this_emb
 
-        embedding_path = f"{EMBEDDINGS}/{edge_file.split('.csv')[0]}"
-        pd.DataFrame(selected_emb).to_csv(f"{embedding_path}_{col}.csv", index=False)
+            embedding_path = f"{EMBEDDINGS}/{edge_file.split('.csv')[0]}"
+            pd.DataFrame(selected_emb).to_csv(
+                f"{embedding_path}_{col}.csv", index=False
+            )

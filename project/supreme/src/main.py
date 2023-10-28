@@ -20,7 +20,7 @@ from set_logging import set_log_config
 from settings import (
     HIDDEN_SIZE,
     LEARNING_RATE,
-    NODE_NETWORKS,
+    EMBEDDINGS,
     BASE_DATAPATH,
     LABELS,
     EMBEDDINGS
@@ -42,7 +42,7 @@ if not os.path.exists(EMBEDDINGS):
 
 def combine_trails():
 
-    t = range(len(NODE_NETWORKS))
+    t = range(len(os.listdir(EMBEDDINGS)))
     trial_combs = []
     for r in range(1, len(t) + 1):
         trial_combs.extend([list(x) for x in combinations(t, r)])
@@ -68,7 +68,7 @@ start2 = time.time()
 logger.info(
     f"It took {str(round(start2 - start, 1))}"
     f"seconds for node embedding generation "
-    f"({str(len(LEARNING_RATE) * len(HIDDEN_SIZE))} trials for {str(len(NODE_NETWORKS))} seperate GCNs)."
+    f"({str(len(LEARNING_RATE) * len(HIDDEN_SIZE))} trials for {str(len(os.listdir(EMBEDDINGS)))} seperate GCNs)."
 )
 
 logger.info("SUPREME is integrating the embeddings..")
@@ -81,7 +81,7 @@ for trials in range(len(trial_combs)):
     )
 
     print(
-        f"Combination {trials}  {NODE_NETWORKS} >  selected parameters:\n"
+        f"Combination {trials}  {os.listdir(EMBEDDINGS)} >  selected parameters:\n"
         f"Best_params: {final_result['best_parameters']}\n"
         f"Train accuracy: {final_result['tr_result_acc']}\n"
         f"Train weighted-f1: {final_result['tr_result_wf1']}\n"
