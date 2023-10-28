@@ -55,4 +55,15 @@ def validate(model, criterion, data):
     return loss, emb2
 
 
-criterion = torch.nn.MSELoss()
+def select_criterion(learning: str, y):
+    if learning == "regression":
+        criterion = torch.nn.MSELoss()
+        out_size = 1
+    elif learning == "classification":
+        criterion = torch.nn.CrossEntropyLoss()
+        out_size = torch.tensor(y).shape[0]
+    else:
+        # clustering
+        out_size = torch.tensor(y).shape[0]
+
+    return criterion, out_size

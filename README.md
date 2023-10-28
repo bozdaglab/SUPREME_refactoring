@@ -18,9 +18,9 @@ pip install pre-commit
 # Install the python dependencies
 
 ```shell script
-pip install -r requirements.txt
-pip install -r requirements-dev.txt
-pip install -e ../../lib/supreme
+pip install -r project/supreme/requirements.txt
+pip install -r project/supreme/requirements-dev.txt
+pip install -e lib/supreme
 ```
 
 

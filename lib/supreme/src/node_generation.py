@@ -7,7 +7,7 @@ import pandas as pd
 import torch
 from feature_extraction import FeatureALgo
 from helper import masking_indexes
-from module import Net, criterion, train, validate
+from module import Net, select_criterion, train, validate
 from settings import (
     EDGES,
     EMBEDDINGS,
@@ -60,7 +60,7 @@ def node_feature_generation(BASE_DATAPATH):
     return new_x
 
 
-def node_embedding_generation(new_x, train_valid_idx, labels, test_idx):
+def node_embedding_generation(new_x, train_valid_idx, labels, test_idx, learning):
     for edge_file in os.listdir(EDGES):
         edge_index = pd.read_csv(f"{EDGES}/{edge_file}")
         best_ValidLoss = np.Inf
@@ -99,9 +99,8 @@ def node_embedding_generation(new_x, train_valid_idx, labels, test_idx):
                     data.valid_mask = torch.tensor(valid_mask, device=DEVICE)
                     data.train_mask = torch.tensor(train_mask, device=DEVICE)
                     data.test_mask = torch.tensor(test_mask, device=DEVICE)
-
+                    criterion, out_size = select_criterion(learning, data.y)
                     in_size = data.x.shape[1]
-                    out_size = 1  # torch.tensor(data.y).shape[0]
                     model = Net(in_size=in_size, hid_size=hid_size, out_size=out_size)
                     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
 

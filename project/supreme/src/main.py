@@ -1,36 +1,36 @@
-from itertools import combinations
 import logging
 import os
+import sys
 import time
 import warnings
-import pickle
-import torch
+from itertools import combinations
+
 import pandas as pd
-import sys
-from dotenv import load_dotenv, find_dotenv
+import torch
+from dotenv import find_dotenv, load_dotenv
+
 load_dotenv(find_dotenv())
-LIB= os.environ.get("LIB")
-PROJECT= os.environ.get("PROJECT")
+LIB = os.environ.get("LIB")
+PROJECT = os.environ.get("PROJECT")
 
 sys.path.append(LIB)
 sys.path.append(PROJECT)
-from node_generation import node_embedding_generation, node_feature_generation
 from helper import ratio
+from node_generation import node_embedding_generation, node_feature_generation
 from set_logging import set_log_config
 from settings import (
-    HIDDEN_SIZE,
-    LEARNING_RATE,
-    EMBEDDINGS,
     BASE_DATAPATH,
+    EMBEDDINGS,
+    HIDDEN_SIZE,
     LABELS,
-    EMBEDDINGS
+    LEARNING,
+    LEARNING_RATE,
 )
 from train_mls import ml
 
 set_log_config()
 logger = logging.getLogger()
 warnings.filterwarnings("ignore", category=FutureWarning)
-
 
 
 if not os.path.exists(BASE_DATAPATH):
@@ -49,6 +49,7 @@ def combine_trails():
     return trial_combs
     # return [combinations(NODE_NETWORKS, i) for i in range(1, len(NODE_NETWORKS)+1)]
 
+
 """remove this part """
 for file in os.listdir(LABELS):
     labels = pd.read_csv(f"{LABELS}/{file}")
@@ -60,9 +61,7 @@ start = time.time()
 logger.info("SUPREME is running..")
 new_x = node_feature_generation(BASE_DATAPATH)
 train_valid, test = torch.utils.data.random_split(new_x, ratio(new_x))
-node_embedding_generation(
-    new_x, train_valid, labels, test
-)
+node_embedding_generation(new_x, train_valid, labels, test, learning=LEARNING)
 start2 = time.time()
 
 logger.info(
@@ -77,7 +76,11 @@ trial_combs = combine_trails()
 
 for trials in range(len(trial_combs)):
     final_result = ml(
-        trial_combs = trial_combs, trials = trials, labels = labels, train_valid_idx=train_valid, test_idx=test
+        trial_combs=trial_combs,
+        trials=trials,
+        labels=labels,
+        train_valid_idx=train_valid,
+        test_idx=test,
     )
 
     print(

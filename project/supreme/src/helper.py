@@ -1,7 +1,6 @@
 import numpy as np
 import torch
-
-# from sklearn.experimental import enable_iterative_imputer
+from sklearn.experimental import enable_iterative_imputer
 from sklearn.impute import IterativeImputer, KNNImputer
 from sklearn.tree import ExtraTreeRegressor
 
