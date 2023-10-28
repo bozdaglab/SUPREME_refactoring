@@ -14,10 +14,14 @@ EMBEDDINGS = BASE_DATAPATH / "embeddings"
 EDGES = BASE_DATAPATH / "edges"
 MASK = BASE_DATAPATH / "mask_values"
 LABELS = BASE_DATAPATH / "labels"
-
-
-FEATURE_NETWORKS_INTEGRATION = [i  for i in os.listdir(BASE_DATAPATH) if i.endswith(".csv")]
-
+IMPUTER_NAME_SUBSET = os.environ.get("IMPUTER_NAME_SUBSET")
+IMPUTER_NAME_WHOLE = os.environ.get("IMPUTER_NAME_WHOLE")
+CLASS_NAME = os.environ.get("CLASS_NAME")
+GROUPBY_COLUMNS = ["CDR_Sum", "ID_Gender"]
+FEATURE_NETWORKS_INTEGRATION = [
+    i for i in os.listdir(BASE_DATAPATH) if i.endswith(".csv")
+]
+FEATURE_TO_DROP = ["Med_ID", "Visit_ID", "CDR_Sum"]
 NODE_NETWORKS = FEATURE_NETWORKS_INTEGRATION.copy()
 
 LEARNING_RATE = [0.01, 0.001, 0.0001]
@@ -38,7 +42,7 @@ MAX_EPOCHS = 500
 MIN_EPOCHS = 200
 PATIENCE = 30
 OPTIONAL_FEATURE_SELECTION = bool(
-     strtobool(os.environ.get("OPTIONAL_FEATURE_SELECTION"))
+    strtobool(os.environ.get("OPTIONAL_FEATURE_SELECTION"))
 )
 # BORUTA_RUNS = os.environ.get("BORUTA_RUNS")
 BORUTA_RUNS = 100

@@ -5,24 +5,24 @@ from collections import defaultdict
 
 import numpy as np
 import pandas as pd
+
 # import rpy2.robjects as robjects
 import torch
-from sklearn.metrics import accuracy_score, f1_score
-from torch_geometric.data import Data
-
 from ml_models import MLModels
 from settings import (
     ADD_RAW_FEAT,
+    BASE_DATAPATH,
     BORUTA_RUNS,
     BORUTA_TOP_FEATURES,
+    EMBEDDINGS,
     FEATURE_NETWORKS_INTEGRATION,
     INT_MOTHOD,
     NODE_NETWORKS,
     OPTIONAL_FEATURE_SELECTION,
     X_TIME2,
-    EMBEDDINGS,
-    BASE_DATAPATH
 )
+from sklearn.metrics import accuracy_score, f1_score
+from torch_geometric.data import Data
 
 # Running Machine Learning for each possible combination of input network
 # Input for Machine Learning algorithm is the concatanation of node embeddings
@@ -36,7 +36,7 @@ def ml(trial_combs, trials, labels, train_valid_idx, test_idx):
         emb = pd.read_csv(f"{EMBEDDINGS}/{NODE_NETWORKS2[0]}")
     else:
         for netw_base in NODE_NETWORKS2:
-            emb= pd.DataFrame()
+            emb = pd.DataFrame()
             cur_emb = pd.read_csv(f"{EMBEDDINGS}/{netw_base}")
             emb = emb.append(cur_emb)
     emb = torch.tensor(emb.values, device=DEVICE)
@@ -94,9 +94,13 @@ def ml(trial_combs, trials, labels, train_valid_idx, test_idx):
             emb = torch.cat((emb, allx), dim=1)
 
     data = Data(x=emb, y=labels)
-    train_mask = np.array([i in set(train_valid_idx.indices) for i in range(data.x.shape[0])])
+    train_mask = np.array(
+        [i in set(train_valid_idx.indices) for i in range(data.x.shape[0])]
+    )
     data.train_mask = torch.tensor(train_mask, device=DEVICE)
-    train_mask = np.array([i in set(train_valid_idx.indices) for i in range(data.x.shape[0])])
+    train_mask = np.array(
+        [i in set(train_valid_idx.indices) for i in range(data.x.shape[0])]
+    )
     test_mask = np.array([i in set(test_idx.indices) for i in range(data.x.shape[0])])
     data.test_mask = torch.tensor(test_mask, device=DEVICE)
     X_train = pd.DataFrame(data.x[data.train_mask].numpy())
