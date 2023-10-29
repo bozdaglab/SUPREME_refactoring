@@ -5,10 +5,10 @@ from itertools import product
 import numpy as np
 import pandas as pd
 import torch
-from feature_extraction import FeatureALgo
-from helper import masking_indexes
+from helper import masking_indexes, select_boruta
 from module import Net, select_criterion, train, validate
 from settings import (
+    DATA,
     EDGES,
     EMBEDDINGS,
     FEATURE_SELECTION_PER_NETWORK,
@@ -16,9 +16,7 @@ from settings import (
     LEARNING_RATE,
     MAX_EPOCHS,
     MIN_EPOCHS,
-    NODE_NETWORKS,
     PATIENCE,
-    TOP_FEATURES_PER_NETWORK,
     X_TIME2,
 )
 from sklearn.model_selection import RepeatedStratifiedKFold
@@ -27,29 +25,19 @@ from torch_geometric.data import Data
 DEVICE = torch.device("cpu")
 
 
-def node_feature_generation(BASE_DATAPATH):
+def node_feature_generation(labels):
     is_first = True
-    for file in NODE_NETWORKS:
-        feat = pd.read_csv(f"{BASE_DATAPATH}/{file}")
+    for file in os.listdir(DATA):
+        feat = pd.read_csv(f"{DATA}/{file}")
         feat = feat.drop("Unnamed: 0", axis=1)
         if not any(
             FEATURE_SELECTION_PER_NETWORK
         ):  # any does not make sense. We need it seperate for each dataset
             values = feat.values
         else:
-            if (
-                TOP_FEATURES_PER_NETWORK[NODE_NETWORKS.index(netw)]
-                < feat.values.shape[1]
-            ):
-                topx = FeatureALgo().select_boruta("pass x and y")
-                topx = np.array(topx)
-                values = torch.tensor(topx.T, device=DEVICE)
-            elif (
-                TOP_FEATURES_PER_NETWORK[NODE_NETWORKS.index(netw)]
-                >= feat.values.shape[1]
-            ):
-                values = feat.values
-
+            topx = select_boruta(feat, labels)
+            topx = np.array(topx)
+            values = torch.tensor(topx.T, device=DEVICE)
         if is_first:
             new_x = torch.tensor(values, device=DEVICE).float()
             is_first = False
@@ -83,7 +71,7 @@ def node_embedding_generation(new_x, train_valid_idx, labels, test_idx, learning
                         y=torch.tensor(labels[col].values, dtype=torch.float32),
                     )
                     X = data.x[train_valid_idx.indices]
-                    y = data.y[train_valid_idx.indices]
+                    # y = data.y[train_valid_idx.indices]
                     y_ph = labels.iloc[:, 3][train_valid_idx.indices]
 
                     rskf = RepeatedStratifiedKFold(n_splits=4, n_repeats=1)

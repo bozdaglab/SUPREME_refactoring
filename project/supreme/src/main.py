@@ -1,6 +1,5 @@
 import logging
 import os
-import sys
 import time
 import warnings
 from itertools import combinations
@@ -8,14 +7,8 @@ from itertools import combinations
 import pandas as pd
 import torch
 from dotenv import find_dotenv, load_dotenv
-
-load_dotenv(find_dotenv())
-LIB = os.environ.get("LIB")
-PROJECT = os.environ.get("PROJECT")
-
-sys.path.append(LIB)
-sys.path.append(PROJECT)
 from helper import ratio
+from learning_types import LearningTypes
 from node_generation import node_embedding_generation, node_feature_generation
 from set_logging import set_log_config
 from settings import (
@@ -28,6 +21,7 @@ from settings import (
 )
 from train_mls import ml
 
+load_dotenv(find_dotenv())
 set_log_config()
 logger = logging.getLogger()
 warnings.filterwarnings("ignore", category=FutureWarning)
@@ -41,7 +35,6 @@ if not os.path.exists(EMBEDDINGS):
 
 
 def combine_trails():
-
     t = range(len(os.listdir(EMBEDDINGS)))
     trial_combs = []
     for r in range(1, len(t) + 1):
@@ -50,16 +43,17 @@ def combine_trails():
     # return [combinations(NODE_NETWORKS, i) for i in range(1, len(NODE_NETWORKS)+1)]
 
 
-"""remove this part """
-for file in os.listdir(LABELS):
-    labels = pd.read_csv(f"{LABELS}/{file}")
-    labels = labels.drop("Unnamed: 0", axis=1)
+labels = None
+if LEARNING in [LearningTypes.regression.name, LearningTypes.classification.name]:
+    for file in os.listdir(LABELS):
+        labels = pd.read_csv(f"{LABELS}/{file}")
+        labels = labels.drop("Unnamed: 0", axis=1)
 
 
 start = time.time()
 
 logger.info("SUPREME is running..")
-new_x = node_feature_generation(BASE_DATAPATH)
+new_x = node_feature_generation(labels)
 train_valid, test = torch.utils.data.random_split(new_x, ratio(new_x))
 node_embedding_generation(new_x, train_valid, labels, test, learning=LEARNING)
 start2 = time.time()

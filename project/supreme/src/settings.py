@@ -12,7 +12,7 @@ DATE_FORMAT = "%m-%d %H:%M:%S"
 BASE_DATAPATH = Path(__file__).parent.parent.parent.parent / "data" / "sample_data"
 EMBEDDINGS = BASE_DATAPATH / "embeddings"
 EDGES = BASE_DATAPATH / "edges"
-MASK = BASE_DATAPATH / "mask_values"
+DATA = BASE_DATAPATH / "data"
 LABELS = BASE_DATAPATH / "labels"
 IMPUTER_NAME_SUBSET = os.environ.get("IMPUTER_NAME_SUBSET")
 IMPUTER_NAME_WHOLE = os.environ.get("IMPUTER_NAME_WHOLE")
@@ -23,7 +23,7 @@ FEATURE_NETWORKS_INTEGRATION = [
 ]
 FEATURE_TO_DROP = ["Med_ID", "Visit_ID", "CDR_Sum"]
 NODE_NETWORKS = FEATURE_NETWORKS_INTEGRATION.copy()
-LEARNING = "classification"
+LEARNING = "clustering"
 LEARNING_RATE = [0.01, 0.001, 0.0001]
 HIDDEN_SIZE = [32, 64, 128, 256]
 X_TIME = 50
