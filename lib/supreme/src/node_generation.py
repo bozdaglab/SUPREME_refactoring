@@ -1,12 +1,14 @@
 import os
 import statistics
 from itertools import product
+from selected_models import load_model
 
 import numpy as np
 import pandas as pd
 import torch
+from module import cluster
 from helper import masking_indexes, select_boruta
-from module import Net, select_criterion, train, validate
+from module import Net
 from settings import (
     DATA,
     EDGES,
@@ -20,7 +22,6 @@ from settings import (
     X_TIME2,
 )
 from sklearn.model_selection import RepeatedStratifiedKFold
-from torch_geometric.data import Data
 
 DEVICE = torch.device("cpu")
 
@@ -49,6 +50,7 @@ def node_feature_generation(labels):
 
 
 def node_embedding_generation(new_x, train_valid_idx, labels, test_idx, learning):
+    learning_model = load_model(learning)
     for edge_file in os.listdir(EDGES):
         edge_index = pd.read_csv(f"{EDGES}/{edge_file}")
         best_ValidLoss = np.Inf
@@ -58,18 +60,7 @@ def node_embedding_generation(new_x, train_valid_idx, labels, test_idx, learning
             for learning_rate, hid_size in product(LEARNING_RATE, HIDDEN_SIZE):
                 av_valid_losses = []
                 for _ in range(X_TIME2):
-                    data = Data(
-                        x=new_x,
-                        edge_index=torch.tensor(
-                            edge_index[edge_index.columns[0:2]].transpose().values,
-                            device=DEVICE,
-                        ).long(),
-                        edge_attr=torch.tensor(
-                            edge_index[edge_index.columns[2]].transpose().values,
-                            device=DEVICE,
-                        ).float(),
-                        y=torch.tensor(labels[col].values, dtype=torch.float32),
-                    )
+                    data = learning_model.prepare_data(new_x, edge_index, labels, col)
                     X = data.x[train_valid_idx.indices]
                     # y = data.y[train_valid_idx.indices]
                     y_ph = labels.iloc[:, 3][train_valid_idx.indices]
@@ -87,7 +78,7 @@ def node_embedding_generation(new_x, train_valid_idx, labels, test_idx, learning
                     data.valid_mask = torch.tensor(valid_mask, device=DEVICE)
                     data.train_mask = torch.tensor(train_mask, device=DEVICE)
                     data.test_mask = torch.tensor(test_mask, device=DEVICE)
-                    criterion, out_size = select_criterion(learning, data.y)
+                    criterion, out_size = learning_model.select_model()
                     in_size = data.x.shape[1]
                     model = Net(in_size=in_size, hid_size=hid_size, out_size=out_size)
                     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
@@ -96,8 +87,8 @@ def node_embedding_generation(new_x, train_valid_idx, labels, test_idx, learning
                     patience_count = 0
 
                     for epoch in range(MAX_EPOCHS):
-                        emb = train(model, optimizer, data, criterion)
-                        this_valid_loss, emb = validate(model, criterion, data)
+                        emb = learning_model.train(model, optimizer, data, criterion)
+                        this_valid_loss, emb = learning_model.validate(model, criterion, data)
 
                         if this_valid_loss < min_valid_loss:
                             min_valid_loss = this_valid_loss
