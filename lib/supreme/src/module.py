@@ -3,13 +3,10 @@ import os
 import torch
 import torch.nn.functional as F
 from dotenv import find_dotenv, load_dotenv
-from torch_geometric.nn import GCNConv
-
+from torch_geometric.nn import GCNConv, GAE, VGAE
+from learning_types import LearningTypes
 load_dotenv(find_dotenv())
-INPUT_SIZE = os.environ.get("INPUT_SIZE")
-HIDDEN_SIZE = os.environ.get("HIDDEN_SIZE")
-OUT_SIZE = os.environ.get("OUT_SIZE")
-
+from settings import LEARNING, INPUT_SIZE, HIDDEN_SIZE, OUT_SIZE
 
 class Net(torch.nn.Module):
     """
@@ -34,10 +31,13 @@ def train(model, optimizer, data, criterion):
     model.train()
     optimizer.zero_grad()
     out, emb1 = model(data)
-    loss = criterion(
-        out[data.train_mask],
-        data.y[data.train_mask],
-    )
+    if LEARNING in  [LearningTypes.classification.name, LearningTypes.regression.name]:
+        loss = criterion(
+            out[data.train_mask],
+            data.y[data.train_mask],
+        )
+    else:
+        loss = 
     loss.backward()
     optimizer.step()
     return emb1

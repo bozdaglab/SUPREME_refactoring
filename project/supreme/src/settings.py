@@ -7,6 +7,12 @@ from dotenv import find_dotenv, load_dotenv
 load_dotenv(find_dotenv())
 
 
+
+INPUT_SIZE = os.environ.get("INPUT_SIZE")
+HIDDEN_SIZE = os.environ.get("HIDDEN_SIZE")
+OUT_SIZE = os.environ.get("OUT_SIZE")
+
+
 FORMAT = "%(asctime)s.%(msecs)03d %(name)-8s %(levelname)-4s %(message)s"
 DATE_FORMAT = "%m-%d %H:%M:%S"
 BASE_DATAPATH = Path(__file__).parent.parent.parent.parent / "data" / "sample_data"
