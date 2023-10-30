@@ -7,7 +7,6 @@ from itertools import combinations
 import pandas as pd
 import torch
 from dotenv import find_dotenv, load_dotenv
-from helper import ratio
 from learning_types import LearningTypes
 from node_generation import node_embedding_generation, node_feature_generation
 from set_logging import set_log_config
@@ -54,8 +53,8 @@ start = time.time()
 
 logger.info("SUPREME is running..")
 new_x = node_feature_generation(labels)
-train_valid, test = torch.utils.data.random_split(new_x, ratio(new_x))
-node_embedding_generation(new_x, train_valid, labels, test, learning=LEARNING)
+
+node_embedding_generation(new_x, labels, learning=LEARNING)
 start2 = time.time()
 
 logger.info(
