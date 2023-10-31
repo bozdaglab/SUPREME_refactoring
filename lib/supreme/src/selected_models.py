@@ -6,7 +6,7 @@ from helper import masking_indexes, ratio
 from learning_types import LearningTypes
 
 # from torch_geometric.nn import GAE, VGAE
-from settings import NODE2VEC
+from settings import NODE2VEC, EMBEDDING_DIM, WALK_LENGHT, CONTEXT_SIZE, WALK_PER_NODE, P, Q, SPARSE
 from sklearn.model_selection import RepeatedStratifiedKFold, train_test_split
 from torch_geometric.data import Data
 from torch_geometric.nn import Node2Vec
@@ -69,12 +69,16 @@ class GCNUnsupervised:
         train_valid_idx, test_idx = torch.utils.data.random_split(
             self.new_x, ratio(self.new_x)
         )
+        data = make_data(new_x, edge_index)
         node2vec = Node2Vec(
-            edge_index,
-            embedding_dim=128,
-            walk_length=20,
-            context_size=10,
-            walks_per_node=10,
+            edge_index=data.edge_index,
+            embedding_dim=EMBEDDING_DIM,
+            walk_length=WALK_LENGHT,
+            context_size=CONTEXT_SIZE,
+            walks_per_node=WALK_PER_NODE,
+            p=P,
+            q=Q,
+            sparse=SPARSE,
         ).to(DEVICE)
         pos, neg = node2vec.sample([10, 15])
         data = make_data(new_x, edge_index)
@@ -91,6 +95,7 @@ class GCNUnsupervised:
         model.train()
         optimizer.zero_grad()
         out, emb = model(data, model)
+        NODE2VEC = False
         if NODE2VEC:
             loss = self.loss(
                 out, emb, pos_rw=data.pos_edge_labels, neg_rw=data.neg_edge_labels
@@ -180,9 +185,9 @@ def train_test_valid(data, train_valid_idx, test_idx, labels: Optional = None):
     return data
 
 
-def load_model(learning, new_x):
+def load_model(learning, new_x, label):
     if learning in [LearningTypes.classification.name, LearningTypes.regression.name]:
-        return GCNSupervised(learning=learning, new_x=new_x)
+        return GCNSupervised(learning=learning, new_x=new_x, label=label)
     return GCNUnsupervised(new_x=new_x)
 
 

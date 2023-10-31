@@ -48,7 +48,7 @@ def node_feature_generation(labels):
 
 
 def node_embedding_generation(new_x, labels, learning):
-    learning_model = load_model(learning, new_x)
+    learning_model = load_model(learning, new_x, labels)
     for edge_file in os.listdir(EDGES):
         edge_index = pd.read_csv(f"{EDGES}/{edge_file}")
         best_ValidLoss = np.Inf
