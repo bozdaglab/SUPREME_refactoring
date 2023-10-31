@@ -35,7 +35,7 @@ HIDDEN_SIZE = [32]
 X_TIME = 50
 FEATURE_SELECTION_PER_NETWORK = [False, False, False]
 TOP_FEATURES_PER_NETWORK = [50, 50, 50]
-
+NODE2VEC = bool(os.environ.get("NODE2VEC"))
 LOGGING_LEVEL = os.environ.get("LOGGING_LEVEL")
 ADD_RAW_FEAT = bool(strtobool(os.environ.get("ADD_RAW_FEAT")))
 INT_MOTHOD = os.environ.get("INT_MOTHOD")
