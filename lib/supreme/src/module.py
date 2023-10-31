@@ -1,17 +1,15 @@
-import os
-
 import torch
 import torch.nn.functional as F
 from dotenv import find_dotenv, load_dotenv
+from learning_types import EmbeddingModel
+from settings import HIDDEN_SIZE, INPUT_SIZE, OUT_SIZE, SELECT_EMB_MODEL
 from torch_geometric.nn import GCNConv
 
+DEVICE = torch.device("cpu")
 load_dotenv(find_dotenv())
-INPUT_SIZE = os.environ.get("INPUT_SIZE")
-HIDDEN_SIZE = os.environ.get("HIDDEN_SIZE")
-OUT_SIZE = os.environ.get("OUT_SIZE")
 
 
-class Net(torch.nn.Module):
+class Net_ori(torch.nn.Module):
     """
     Training SUPREME model
     """
@@ -21,7 +19,7 @@ class Net(torch.nn.Module):
         self.conv1 = GCNConv(in_size, hid_size)
         self.conv2 = GCNConv(hid_size, out_size)
 
-    def forward(self, data):
+    def forward(self, data, model):
         x, edge_index, edge_weight = data.x, data.edge_index, data.edge_attr
         x_emb = self.conv1(x, edge_index, edge_weight)
         x = F.relu(x_emb)
@@ -30,29 +28,33 @@ class Net(torch.nn.Module):
         return x, x_emb
 
 
-def train(model, optimizer, data, criterion):
-    model.train()
-    optimizer.zero_grad()
-    out, emb1 = model(data)
-    loss = criterion(
-        out[data.train_mask],
-        torch.tensor(data.y.values.reshape(1, -1)[0])[data.train_mask],
-    )
-    loss.backward()
-    optimizer.step()
-    return emb1
+class Net_encoder_decoder(torch.nn.Module):
+    """
+    Training SUPREME model
+    """
+
+    def __init__(self, in_size=INPUT_SIZE, hid_size=HIDDEN_SIZE, out_size=OUT_SIZE):
+        super().__init__()
+        self.conv1 = GCNConv(in_size, hid_size)
+        self.conv2 = GCNConv(hid_size, out_size)
+        self.conv3 = GCNConv(out_size, hid_size)
+        self.conv4 = GCNConv(hid_size, in_size)
+
+    def forward(self, data, model):
+        x, edge_index, edge_weight = data.x, data.edge_index, data.edge_attr
+        x_emb = self.conv1(x, edge_index, edge_weight)
+        x = F.relu(x_emb)
+        x = F.dropout(x, training=self.training)
+        x = self.conv2(x, edge_index, edge_weight)
+        x = F.relu(x)
+        x_emb = self.conv3(x, edge_index, edge_weight)
+        x_emb = F.relu(x_emb)
+        x = self.conv4(x_emb, edge_index, edge_weight)
+        x = F.relu(x)
+        return x, x_emb
 
 
-def validate(model, criterion, data):
-    model.eval()
-    with torch.no_grad():
-        out, emb2 = model(data)
-        # pred = out.argmax(dim=1)
-        loss = criterion(
-            out[data.valid_mask],
-            torch.tensor(data.y.values.reshape(1, -1)[0])[data.valid_mask],
-        )
-    return loss, emb2
-
-
-criterion = torch.nn.CrossEntropyLoss()
+def select_clsuetr_model(in_size, hid_size, out_size):
+    if SELECT_EMB_MODEL == EmbeddingModel.gcn_ori.name:
+        return Net_ori(in_size, hid_size, out_size)
+    return Net_encoder_decoder(in_size, hid_size, out_size)

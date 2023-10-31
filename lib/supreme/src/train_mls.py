@@ -1,60 +1,50 @@
-import pickle
+import os
 import re
 import statistics
 from collections import defaultdict
 
 import numpy as np
 import pandas as pd
-# import rpy2.robjects as robjects
 import torch
-from sklearn.metrics import accuracy_score, f1_score
-from torch_geometric.data import Data
-
 from ml_models import MLModels
 from settings import (
     ADD_RAW_FEAT,
+    BASE_DATAPATH,
     BORUTA_RUNS,
     BORUTA_TOP_FEATURES,
+    EMBEDDINGS,
     FEATURE_NETWORKS_INTEGRATION,
     INT_MOTHOD,
-    NODE_NETWORKS,
     OPTIONAL_FEATURE_SELECTION,
     X_TIME2,
 )
+from sklearn.metrics import accuracy_score, f1_score
+from torch_geometric.data import Data
 
-# Running Machine Learning for each possible combination of input network
-# Input for Machine Learning algorithm is the concatanation of node embeddings
-#  (specific to each combination) and node features (if node feature integration is True)
 DEVICE = torch.device("cpu")
 
 
-def ml(save_path, dataset_name, trial_combs, trials, labels, train_valid_idx, test_idx):
-    NODE_NETWORKS2 = [NODE_NETWORKS[i] for i in trial_combs[trials]]
-    netw_base = NODE_NETWORKS2[0]
-    emb_file = save_path / f"Emb_{NODE_NETWORKS2[0]}.pkl"
-    with open(emb_file, "rb") as f:
-        emb = pickle.load(f)
-
-    if len(NODE_NETWORKS2) > 1:
-        for netw_base in NODE_NETWORKS2[1:]:
-            emb_file =  save_path / f"Emb_{netw_base}.pkl"
-            with open(emb_file, "rb") as f:
-                cur_emb = pickle.load(f)
-            emb = torch.cat((emb, cur_emb), dim=1)
-
+def ml(trial_combs, trials, labels, train_valid_idx, test_idx):
+    NODE_NETWORKS2 = [os.listdir(EMBEDDINGS)[i] for i in trial_combs[trials]]
+    if len(NODE_NETWORKS2) == 1:
+        emb = pd.read_csv(f"{EMBEDDINGS}/{NODE_NETWORKS2[0]}")
+    else:
+        for netw_base in NODE_NETWORKS2:
+            emb = pd.DataFrame()
+            cur_emb = pd.read_csv(f"{EMBEDDINGS}/{netw_base}")
+            emb = emb.append(cur_emb)
+    emb = torch.tensor(emb.values, device=DEVICE)
     if ADD_RAW_FEAT is True:
         is_first = 0
-        addFeatures = FEATURE_NETWORKS_INTEGRATION
-        for netw in addFeatures:
-            file = "" + "data/" + dataset_name + "/" + netw + ".pkl"
-            with open(file, "rb") as f:
-                feat = pickle.load(f)
+        for addFeatures in FEATURE_NETWORKS_INTEGRATION:
+            features = pd.read_csv(f"{BASE_DATAPATH}/{addFeatures}")
+
             if is_first == 0:
-                allx = torch.tensor(feat.values, device=DEVICE).float()
+                allx = torch.tensor(features.values, device=DEVICE).float()
                 is_first = 1
             else:
                 allx = torch.cat(
-                    (allx, torch.tensor(feat.values, device=DEVICE).float()), dim=1
+                    (allx, torch.tensor(features.values, device=DEVICE).float()), dim=1
                 )
 
         if OPTIONAL_FEATURE_SELECTION is True:
@@ -98,9 +88,14 @@ def ml(save_path, dataset_name, trial_combs, trials, labels, train_valid_idx, te
             emb = torch.cat((emb, allx), dim=1)
 
     data = Data(x=emb, y=labels)
-    train_mask = np.array([i in set(train_valid_idx) for i in range(data.x.shape[0])])
+    train_mask = np.array(
+        [i in set(train_valid_idx.indices) for i in range(data.x.shape[0])]
+    )
     data.train_mask = torch.tensor(train_mask, device=DEVICE)
-    test_mask = np.array([i in set(test_idx) for i in range(data.x.shape[0])])
+    train_mask = np.array(
+        [i in set(train_valid_idx.indices) for i in range(data.x.shape[0])]
+    )
+    test_mask = np.array([i in set(test_idx.indices) for i in range(data.x.shape[0])])
     data.test_mask = torch.tensor(test_mask, device=DEVICE)
     X_train = pd.DataFrame(data.x[data.train_mask].numpy())
     X_test = pd.DataFrame(data.x[data.test_mask].numpy())
