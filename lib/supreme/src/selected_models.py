@@ -6,7 +6,16 @@ from helper import masking_indexes, ratio
 from learning_types import LearningTypes
 
 # from torch_geometric.nn import GAE, VGAE
-from settings import NODE2VEC, EMBEDDING_DIM, WALK_LENGHT, CONTEXT_SIZE, WALK_PER_NODE, P, Q, SPARSE
+from settings import (
+    CONTEXT_SIZE,
+    EMBEDDING_DIM,
+    NODE2VEC,
+    SPARSE,
+    WALK_LENGHT,
+    WALK_PER_NODE,
+    P,
+    Q,
+)
 from sklearn.model_selection import RepeatedStratifiedKFold, train_test_split
 from torch_geometric.data import Data
 from torch_geometric.nn import Node2Vec
@@ -96,21 +105,17 @@ class GCNUnsupervised:
         optimizer.zero_grad()
         out, emb = model(data, model)
         if NODE2VEC:
+            """
+            https://arxiv.org/abs/1607.00653,
+            https://arxiv.org/abs/1611.0730
+            """
+
             loss = self.loss(
                 out, emb, pos_rw=data.pos_edge_labels, neg_rw=data.neg_edge_labels
             )
         else:
+            # encoder_decoder loss, criterion is MSE
             loss = criterion(out[data.train_mask], data.x[data.train_mask])
-        loss.backward()
-        optimizer.step()
-        return out
-
-    def train_1(self, model, optimizer, data, criterion):
-        # model = GAE(model)
-        model.train()
-        optimizer.zero_grad()
-        out, _ = model(data, model)
-        loss = criterion(out[data.train_mask], data.x[data.train_mask])
         loss.backward()
         optimizer.step()
         return out

@@ -5,7 +5,6 @@ import warnings
 from itertools import combinations
 
 import pandas as pd
-import torch
 from dotenv import find_dotenv, load_dotenv
 from learning_types import LearningTypes
 from node_generation import node_embedding_generation, node_feature_generation
@@ -60,7 +59,8 @@ start2 = time.time()
 logger.info(
     f"It took {str(round(start2 - start, 1))}"
     f"seconds for node embedding generation "
-    f"({str(len(LEARNING_RATE) * len(HIDDEN_SIZE))} trials for {str(len(os.listdir(EMBEDDINGS)))} seperate GCNs)."
+    f"({str(len(LEARNING_RATE) * len(HIDDEN_SIZE))}"
+    f"trials for {str(len(os.listdir(EMBEDDINGS)))} seperate GCNs)."
 )
 
 logger.info("SUPREME is integrating the embeddings..")
