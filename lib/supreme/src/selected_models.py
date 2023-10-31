@@ -9,7 +9,9 @@ from learning_types import LearningTypes
 from settings import (
     CONTEXT_SIZE,
     EMBEDDING_DIM,
+    MASKING,
     NODE2VEC,
+    POS_NEG,
     SPARSE,
     WALK_LENGHT,
     WALK_PER_NODE,
@@ -19,6 +21,8 @@ from settings import (
 from sklearn.model_selection import RepeatedStratifiedKFold, train_test_split
 from torch_geometric.data import Data
 from torch_geometric.nn import Node2Vec
+from torch_geometric.utils.negative_sampling import negative_sampling
+from torch_geometric.utils.num_nodes import maybe_num_nodes
 
 DEVICE = torch.device("cpu")
 EPS = 1e-15
@@ -79,20 +83,35 @@ class GCNUnsupervised:
             self.new_x, ratio(self.new_x)
         )
         data = make_data(new_x, edge_index)
-        node2vec = Node2Vec(
-            edge_index=data.edge_index,
-            embedding_dim=EMBEDDING_DIM,
-            walk_length=WALK_LENGHT,
-            context_size=CONTEXT_SIZE,
-            walks_per_node=WALK_PER_NODE,
-            p=P,
-            q=Q,
-            sparse=SPARSE,
-        ).to(DEVICE)
-        pos, neg = node2vec.sample([10, 15])
-        data = make_data(new_x, edge_index)
-        data.pos_edge_labels = torch.tensor(pos, device=DEVICE).long()
-        data.neg_edge_labels = torch.tensor(neg, device=DEVICE).long()
+        if NODE2VEC:
+            node2vec = Node2Vec(
+                edge_index=data.edge_index,
+                embedding_dim=EMBEDDING_DIM,
+                walk_length=WALK_LENGHT,
+                context_size=CONTEXT_SIZE,
+                walks_per_node=WALK_PER_NODE,
+                p=P,
+                q=Q,
+                sparse=SPARSE,
+            ).to(DEVICE)
+            pos, neg = node2vec.sample([10, 15])
+            data = make_data(new_x, edge_index)
+            data.pos_edge_labels = torch.tensor(pos, device=DEVICE).long()
+            data.neg_edge_labels = torch.tensor(neg, device=DEVICE).long()
+        elif MASKING:
+            # mask some edges and used those as negative values
+            num_nodes = maybe_num_nodes(data.edge_index)
+            mask_edges = torch.rand(edge_index.size(1)) < 0.5
+            non_mask_edges = ~mask_edges
+            data.neg_edge_labels = data.edge_index.clone()
+            data.neg_edge_labels[0:mask_edges] = torch.randint(
+                num_nodes, (mask_edges.sum(),), device=DEVICE
+            )
+            data.neg_edge_labels[0:non_mask_edges] = torch.randint(
+                num_nodes, (non_mask_edges.sum(),), device=DEVICE
+            )
+        else:
+            negative_sampling(data.edge_index)
         return train_test_valid(data, train_valid_idx, test_idx)
 
     def select_model(self):
@@ -104,10 +123,11 @@ class GCNUnsupervised:
         model.train()
         optimizer.zero_grad()
         out, emb = model(data, model)
-        if NODE2VEC:
+        if POS_NEG:
             """
             https://arxiv.org/abs/1607.00653,
-            https://arxiv.org/abs/1611.0730
+            https://arxiv.org/abs/1611.0730,
+            https://arxiv.org/abs/1706.02216
             """
 
             loss = self.loss(
@@ -126,7 +146,6 @@ class GCNUnsupervised:
         return (h_start * h_rest).sum(dim=-1).view(-1)
 
     def loss(self, out, emb, pos_rw, neg_rw):
-        r"""Computes the loss given positive and negative random walks."""
         # Positive loss.
         start, rest = pos_rw[:, 0], pos_rw[:, 1:].contiguous()
         out = self.compute(emb, start, rest, pos_rw)
