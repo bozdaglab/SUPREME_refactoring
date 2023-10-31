@@ -74,6 +74,56 @@ class GCNUnsupervised:
         return criterion, out_size
 
     def train(self, model, optimizer, data, criterion):
+        model.train()
+        optimizer.zero_grad()
+        out, _ = model(data, model)
+        from torch_geometric.nn import Node2Vec
+
+        node2vec = Node2Vec(
+            data.edge_index,
+            embedding_dim=128,
+            walk_length=20,
+            context_size=10,
+            walks_per_node=10,
+            num_negative_samples=1,
+            p=1.0,
+            q=1.0,
+            sparse=True,
+        ).to(DEVICE)
+        pos, neg = node2vec.sample([10, 15])
+        loss = self.loss(pos_rw=pos, neg_rw=neg)
+        loss.backward()
+        optimizer.step()
+        return out
+
+    def loss(self, pos_rw, neg_rw):
+        r"""Computes the loss given positive and negative random walks."""
+
+        # Positive loss.
+        start, rest = pos_rw[:, 0], pos_rw[:, 1:].contiguous()
+
+        h_start = self.embedding(start).view(pos_rw.size(0), 1, self.embedding_dim)
+        h_rest = self.embedding(rest.view(-1)).view(
+            pos_rw.size(0), -1, self.embedding_dim
+        )
+
+        out = (h_start * h_rest).sum(dim=-1).view(-1)
+        pos_loss = -torch.log(torch.sigmoid(out) + self.EPS).mean()
+
+        # Negative loss.
+        start, rest = neg_rw[:, 0], neg_rw[:, 1:].contiguous()
+
+        h_start = self.embedding(start).view(neg_rw.size(0), 1, self.embedding_dim)
+        h_rest = self.embedding(rest.view(-1)).view(
+            neg_rw.size(0), -1, self.embedding_dim
+        )
+
+        out = (h_start * h_rest).sum(dim=-1).view(-1)
+        neg_loss = -torch.log(1 - torch.sigmoid(out) + self.EPS).mean()
+
+        return pos_loss + neg_loss
+
+    def train_1(self, model, optimizer, data, criterion):
         # model = GAE(model)
         model.train()
         optimizer.zero_grad()

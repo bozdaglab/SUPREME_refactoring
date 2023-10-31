@@ -26,7 +26,7 @@ GROUPBY_COLUMNS = ["CDR_Sum", "ID_Gender"]
 FEATURE_NETWORKS_INTEGRATION = [
     i for i in os.listdir(BASE_DATAPATH) if i.endswith(".csv")
 ]
-SELECT_EMB_MODEL = "gcn_encoder"
+SELECT_EMB_MODEL = "gcn_e"
 FEATURE_TO_DROP = ["Med_ID", "Visit_ID", "CDR_Sum"]
 NODE_NETWORKS = FEATURE_NETWORKS_INTEGRATION.copy()
 LEARNING = "clustering"
