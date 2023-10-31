@@ -1,22 +1,19 @@
-import os
-
 import torch
 import torch.nn.functional as F
 from dotenv import find_dotenv, load_dotenv
-from torch_geometric.nn import GCNConv, GAE
-from learning_types import LearningTypes, EmbeddingModel
-load_dotenv(find_dotenv())
-from settings import LEARNING, INPUT_SIZE, HIDDEN_SIZE, OUT_SIZE
-from torch.nn import Linear
-DEVICE = torch.device("cpu")
-from settings import SELECT_EMB_MODEL
+from learning_types import EmbeddingModel
+from settings import HIDDEN_SIZE, INPUT_SIZE, OUT_SIZE, SELECT_EMB_MODEL
+from torch_geometric.nn import GCNConv
 
+DEVICE = torch.device("cpu")
+load_dotenv(find_dotenv())
 
 
 class Net_ori(torch.nn.Module):
     """
     Training SUPREME model
     """
+
     def __init__(self, in_size=INPUT_SIZE, hid_size=HIDDEN_SIZE, out_size=OUT_SIZE):
         super().__init__()
         self.conv1 = GCNConv(in_size, hid_size)
@@ -29,13 +26,13 @@ class Net_ori(torch.nn.Module):
         x = F.dropout(x, training=self.training)
         x = self.conv2(x, edge_index, edge_weight)
         return x, x_emb
-    
 
 
 class Net_encoder_decoder(torch.nn.Module):
     """
     Training SUPREME model
     """
+
     def __init__(self, in_size=INPUT_SIZE, hid_size=HIDDEN_SIZE, out_size=OUT_SIZE):
         super().__init__()
         self.conv1 = GCNConv(in_size, hid_size)
@@ -55,7 +52,6 @@ class Net_encoder_decoder(torch.nn.Module):
         x = self.conv4(x_emb, edge_index, edge_weight)
         x = F.relu(x)
         return x, x_emb
-
 
 
 def select_clsuetr_model(in_size, hid_size, out_size):

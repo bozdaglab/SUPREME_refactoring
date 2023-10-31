@@ -1,13 +1,10 @@
 import os
-import pickle
 import re
 import statistics
 from collections import defaultdict
 
 import numpy as np
 import pandas as pd
-
-# import rpy2.robjects as robjects
 import torch
 from ml_models import MLModels
 from settings import (
@@ -18,16 +15,12 @@ from settings import (
     EMBEDDINGS,
     FEATURE_NETWORKS_INTEGRATION,
     INT_MOTHOD,
-    NODE_NETWORKS,
     OPTIONAL_FEATURE_SELECTION,
     X_TIME2,
 )
 from sklearn.metrics import accuracy_score, f1_score
 from torch_geometric.data import Data
 
-# Running Machine Learning for each possible combination of input network
-# Input for Machine Learning algorithm is the concatanation of node embeddings
-#  (specific to each combination) and node features (if node feature integration is True)
 DEVICE = torch.device("cpu")
 
 

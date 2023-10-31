@@ -56,35 +56,30 @@ def node_embedding_generation(new_x, labels, learning):
             av_valid_losses = []
             for _ in range(X_TIME2):
                 data = learning_model.prepare_data(new_x, edge_index)
-
                 criterion, out_size = learning_model.select_model()
                 in_size = data.x.shape[1]
-                model = select_clsuetr_model(in_size=in_size, hid_size=hid_size, out_size=out_size)
+                model = select_clsuetr_model(
+                    in_size=in_size, hid_size=hid_size, out_size=out_size
+                )
                 optimizer = select_optimizer("adam", model, learning_rate)
-
                 min_valid_loss = np.Inf
                 patience_count = 0
-
                 for epoch in range(MAX_EPOCHS):
                     emb = learning_model.train(model, optimizer, data, criterion)
                     this_valid_loss, emb = learning_model.validate(
                         data, model, criterion
                     )
-
                     if this_valid_loss < min_valid_loss:
                         min_valid_loss = this_valid_loss
                         patience_count = 0
                         this_emb = emb
                     else:
                         patience_count += 1
-
                     if epoch >= MIN_EPOCHS and patience_count >= PATIENCE:
                         break
-
                 av_valid_losses.append(min_valid_loss.item())
 
             av_valid_loss = round(statistics.median(av_valid_losses), 3)
-
             if av_valid_loss < best_ValidLoss:
                 best_ValidLoss = av_valid_loss
 
