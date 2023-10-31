@@ -1,16 +1,15 @@
-
-from torch_geometric.data import Data
-import torch
-from torch_geometric.nn import GAE, VGAE
-DEVICE = torch.device("cpu")
-from learning_types import LearningTypes
-from module import Net
-from helper import masking_indexes
-from sklearn.model_selection import RepeatedStratifiedKFold
-from helper import ratio
-import numpy as np
 from typing import Optional
-from sklearn.model_selection import train_test_split
+
+import numpy as np
+import torch
+from helper import masking_indexes, ratio
+from learning_types import LearningTypes
+from sklearn.model_selection import RepeatedStratifiedKFold, train_test_split
+from torch_geometric.data import Data
+
+# from torch_geometric.nn import GAE, VGAE
+
+DEVICE = torch.device("cpu")
 
 
 class GCNSupervised:
@@ -19,11 +18,13 @@ class GCNSupervised:
         self.new_x = new_x
 
     def prepare_data(self, new_x, edge_index, labels, col):
-        train_valid_idx, test_idx = torch.utils.data.random_split(self.new_x, ratio(self.new_x))
+        train_valid_idx, test_idx = torch.utils.data.random_split(
+            self.new_x, ratio(self.new_x)
+        )
         data = make_data(new_x, edge_index)
         data.y = torch.tensor(labels[col].values, dtype=torch.float32)
         return train_test_valid(data, train_valid_idx, test_idx)
-    
+
     def select_model(self):
         if self.learning == "regression":
             criterion = torch.nn.MSELoss()
@@ -45,7 +46,6 @@ class GCNSupervised:
         optimizer.step()
         return emb1
 
-
     def validate(self, model, criterion, data):
         model.eval()
         with torch.no_grad():
@@ -57,20 +57,20 @@ class GCNSupervised:
         return loss, emb2
 
 
-
 class GCNUnsupervised:
     def __init__(self, new_x) -> None:
         self.new_x = new_x
 
     def prepare_data(self, new_x, edge_index):
-        train_valid_idx, test_idx = torch.utils.data.random_split(self.new_x, ratio(self.new_x))
+        train_valid_idx, test_idx = torch.utils.data.random_split(
+            self.new_x, ratio(self.new_x)
+        )
         data = make_data(new_x, edge_index)
         return train_test_valid(data, train_valid_idx, test_idx)
-    
-    
+
     def select_model(self):
         criterion = torch.nn.MSELoss()
-        out_size =  self.new_x.shape[-1]
+        out_size = self.new_x.shape[-1]
         return criterion, out_size
 
     def train(self, model, optimizer, data, criterion):
@@ -78,34 +78,33 @@ class GCNUnsupervised:
         model.train()
         optimizer.zero_grad()
         out, _ = model(data, model)
-        loss = criterion(
-            out[data.train_mask], 
-            data.x[data.train_mask]
-        )
+        loss = criterion(out[data.train_mask], data.x[data.train_mask])
         loss.backward()
         optimizer.step()
         return out
 
-    def validate(self, data, model):
+    def validate(self, data, model, criterion):
         # model = GAE(model)
         model.eval()
-        z = model(data, model)
-        return model(z, data.x[data.valid_mask])
-
+        with torch.no_grad():
+            z, emdb = model(data, model)
+            loss = criterion(z[data.valid_mask], data.x[data.valid_mask])
+        return loss, emdb
 
 
 def make_data(new_x, edge_index):
-        return Data(
-            x=new_x,
-            edge_index=torch.tensor(
-                edge_index[edge_index.columns[0:2]].transpose().values,
-                device=DEVICE,
-            ).long(),
-            edge_attr=torch.tensor(
-                edge_index[edge_index.columns[2]].transpose().values,
-                device=DEVICE,
-            ).float(),
-        )
+    return Data(
+        x=new_x,
+        edge_index=torch.tensor(
+            edge_index[edge_index.columns[0:2]].transpose().values,
+            device=DEVICE,
+        ).long(),
+        edge_attr=torch.tensor(
+            edge_index[edge_index.columns[2]].transpose().values,
+            device=DEVICE,
+        ).float(),
+    )
+
 
 def train_test_valid(data, train_valid_idx, test_idx, labels: Optional = None):
 
@@ -119,13 +118,19 @@ def train_test_valid(data, train_valid_idx, test_idx, labels: Optional = None):
             train_idx = np.array(train_valid_idx.indices)[train_part]
             valid_idx = np.array(train_valid_idx.indices)[valid_part]
             break
-    
+
     else:
         train_idx, valid_idx = train_test_split(train_valid_idx.indices, test_size=0.25)
 
-    data.valid_mask = torch.tensor(masking_indexes(data=data, indexes=valid_idx), device=DEVICE)
-    data.train_mask = torch.tensor(masking_indexes(data=data, indexes=train_idx), device=DEVICE)
-    data.test_mask = torch.tensor(masking_indexes(data=data, indexes=test_idx), device=DEVICE)
+    data.valid_mask = torch.tensor(
+        masking_indexes(data=data, indexes=valid_idx), device=DEVICE
+    )
+    data.train_mask = torch.tensor(
+        masking_indexes(data=data, indexes=train_idx), device=DEVICE
+    )
+    data.test_mask = torch.tensor(
+        masking_indexes(data=data, indexes=test_idx), device=DEVICE
+    )
 
     return data
 
@@ -136,10 +141,11 @@ def load_model(learning, new_x):
     return GCNUnsupervised(new_x=new_x)
 
 
-
 def select_optimizer(optimizer_type, model, learning_rate):
     if optimizer_type == "sgd":
-        return  torch.optim.SGD(model.parameters(), lr=learning_rate, weight_decay = 0.001, momentum = 0.9)
+        return torch.optim.SGD(
+            model.parameters(), lr=learning_rate, weight_decay=0.001, momentum=0.9
+        )
     elif optimizer_type == "adam":
         return torch.optim.Adam(model.parameters(), lr=learning_rate)
     elif optimizer_type == "sparse_adam":

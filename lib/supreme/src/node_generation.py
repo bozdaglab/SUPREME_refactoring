@@ -1,14 +1,13 @@
 import os
 import statistics
 from itertools import product
-from selected_models import load_model
 
 import numpy as np
 import pandas as pd
 import torch
-from selected_models import select_optimizer
-from helper import  select_boruta
+from helper import select_boruta
 from module import Net
+from selected_models import load_model, select_optimizer
 from settings import (
     DATA,
     EDGES,
@@ -48,14 +47,11 @@ def node_feature_generation(labels):
     return new_x
 
 
-def node_embedding_generation(new_x,  labels, learning):
+def node_embedding_generation(new_x, labels, learning):
     learning_model = load_model(learning, new_x)
     for edge_file in os.listdir(EDGES):
         edge_index = pd.read_csv(f"{EDGES}/{edge_file}")
         best_ValidLoss = np.Inf
-        # here we dont need the y anymore
-
-        # for col in labels.iloc[:, 0:3]:
         for learning_rate, hid_size in product(LEARNING_RATE, HIDDEN_SIZE):
             av_valid_losses = []
             for _ in range(X_TIME2):
@@ -71,7 +67,9 @@ def node_embedding_generation(new_x,  labels, learning):
 
                 for epoch in range(MAX_EPOCHS):
                     emb = learning_model.train(model, optimizer, data, criterion)
-                    this_valid_loss, emb = learning_model.validate(data, model)
+                    this_valid_loss, emb = learning_model.validate(
+                        data, model, criterion
+                    )
 
                     if this_valid_loss < min_valid_loss:
                         min_valid_loss = this_valid_loss
@@ -89,11 +87,8 @@ def node_embedding_generation(new_x,  labels, learning):
 
             if av_valid_loss < best_ValidLoss:
                 best_ValidLoss = av_valid_loss
-                # best_emb_lr = learning_rate
-                # best_emb_hs = hid_size
+
                 selected_emb = this_emb
 
         embedding_path = f"{EMBEDDINGS}/{edge_file.split('.csv')[0]}"
-        pd.DataFrame(selected_emb).to_csv(
-            f"{embedding_path}_{col}.csv", index=False
-        )
+        pd.DataFrame(selected_emb).to_csv(f"{embedding_path}.csv", index=False)
