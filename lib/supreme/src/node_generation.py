@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 import torch
 from helper import select_boruta
-from module import Net
+from module import select_clsuetr_model
 from selected_models import load_model, select_optimizer
 from settings import (
     DATA,
@@ -59,7 +59,7 @@ def node_embedding_generation(new_x, labels, learning):
 
                 criterion, out_size = learning_model.select_model()
                 in_size = data.x.shape[1]
-                model = Net(in_size=in_size, hid_size=hid_size, out_size=out_size)
+                model = select_clsuetr_model(in_size=in_size, hid_size=hid_size, out_size=out_size)
                 optimizer = select_optimizer("adam", model, learning_rate)
 
                 min_valid_loss = np.Inf
