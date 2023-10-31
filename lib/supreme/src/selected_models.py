@@ -95,7 +95,6 @@ class GCNUnsupervised:
         model.train()
         optimizer.zero_grad()
         out, emb = model(data, model)
-        NODE2VEC = False
         if NODE2VEC:
             loss = self.loss(
                 out, emb, pos_rw=data.pos_edge_labels, neg_rw=data.neg_edge_labels
