@@ -21,7 +21,7 @@ class GCNSupervised:
     def prepare_data(self, new_x, edge_index, labels, col):
         train_valid_idx, test_idx = torch.utils.data.random_split(self.new_x, ratio(self.new_x))
         data = make_data(new_x, edge_index)
-        data.y = torch.tensor(labels[col].values, dtype=torch.float32),
+        data.y = torch.tensor(labels[col].values, dtype=torch.float32)
         return train_test_valid(data, train_valid_idx, test_idx)
     
     def select_model(self):
@@ -64,37 +64,33 @@ class GCNUnsupervised:
 
     def prepare_data(self, new_x, edge_index):
         train_valid_idx, test_idx = torch.utils.data.random_split(self.new_x, ratio(self.new_x))
-        data = data = make_data(new_x, edge_index)
-        data.pos_edge_label_index = torch.tensor(
-                edge_index[edge_index.columns[0:2]].transpose().values,
-                device=DEVICE,
-            ).long()
+        data = make_data(new_x, edge_index)
         return train_test_valid(data, train_valid_idx, test_idx)
     
     
     def select_model(self):
-        criterion = None
-        out_size = 5
+        criterion = torch.nn.MSELoss()
+        out_size =  self.new_x.shape[-1]
         return criterion, out_size
 
     def train(self, model, optimizer, data, criterion):
-        model = GAE(model)
+        # model = GAE(model)
         model.train()
         optimizer.zero_grad()
-        emb1, _ = model.encode(data)
-        loss = model.recon_loss(
-            emb1,
-            data.edge_index,
+        out, _ = model(data, model)
+        loss = criterion(
+            out[data.train_mask], 
+            data.x[data.train_mask]
         )
         loss.backward()
         optimizer.step()
-        return emb1
+        return out
 
-    def validate(self, model, criterion, data):
-        model = GAE(model)
+    def validate(self, data, model):
+        # model = GAE(model)
         model.eval()
-        z = model.encode(data)
-        return model.test(z, data.pos_edge_label_index, data.neg_edge_label_index)
+        z = model(data, model)
+        return model(z, data.x[data.valid_mask])
 
 
 

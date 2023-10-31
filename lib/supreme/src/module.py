@@ -19,10 +19,20 @@ class Net(torch.nn.Module):
         self.conv1 = GCNConv(in_size, hid_size)
         self.conv2 = GCNConv(hid_size, out_size)
 
-    def forward(self, data):
+        # self.conv3 = GCNConv(out_size, hid_size)
+        # self.conv4 = GCNConv(hid_size, in_size)
+
+    def forward(self, data, model):
         x, edge_index, edge_weight = data.x, data.edge_index, data.edge_attr
         x_emb = self.conv1(x, edge_index, edge_weight)
         x = F.relu(x_emb)
         x = F.dropout(x, training=self.training)
         x = self.conv2(x, edge_index, edge_weight)
+        # x = F.relu(x)
+
+        # x_emb = self.conv3(x, edge_index, edge_weight)
+        # x_emb = F.relu(x_emb)
+        # x = self.conv4(x_emb, edge_index, edge_weight)
+        # x = F.relu(x)
+        
         return x, x_emb

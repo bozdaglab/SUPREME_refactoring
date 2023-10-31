@@ -71,7 +71,7 @@ def node_embedding_generation(new_x,  labels, learning):
 
                 for epoch in range(MAX_EPOCHS):
                     emb = learning_model.train(model, optimizer, data, criterion)
-                    this_valid_loss, emb = learning_model.validate(model, criterion, data)
+                    this_valid_loss, emb = learning_model.validate(data, model)
 
                     if this_valid_loss < min_valid_loss:
                         min_valid_loss = this_valid_loss
