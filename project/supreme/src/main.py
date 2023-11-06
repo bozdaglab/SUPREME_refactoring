@@ -1,5 +1,6 @@
 import logging
 import os
+import pickle
 import time
 import warnings
 from itertools import combinations
@@ -11,6 +12,8 @@ from node_generation import node_embedding_generation, node_feature_generation
 from set_logging import set_log_config
 from settings import (
     BASE_DATAPATH,
+    DATA,
+    EDGES,
     EMBEDDINGS,
     HIDDEN_SIZE,
     LABELS,
@@ -41,6 +44,20 @@ def combine_trails():
     # return [combinations(NODE_NETWORKS, i) for i in range(1, len(NODE_NETWORKS)+1)]
 
 
+def pickle_to_csv():
+    for file in os.listdir(BASE_DATAPATH):
+        if file.endswith(".pkl"):
+            with open(f"{BASE_DATAPATH}/{file}", "rb") as pkl_file:
+                data = pickle.load(pkl_file)
+            if "edges_" in file:
+                to_save_folder = EDGES
+            elif "labels." in file:
+                to_save_folder = LABELS
+            else:
+                to_save_folder = DATA
+            pd.DataFrame(data).to_csv(f"{to_save_folder}/{file.split('.')[0]}.csv")
+
+
 labels = None
 if LEARNING in [LearningTypes.regression.name, LearningTypes.classification.name]:
     for file in os.listdir(LABELS):
@@ -49,7 +66,7 @@ if LEARNING in [LearningTypes.regression.name, LearningTypes.classification.name
 
 
 start = time.time()
-
+pickle_to_csv()
 logger.info("SUPREME is running..")
 new_x = node_feature_generation(labels)
 

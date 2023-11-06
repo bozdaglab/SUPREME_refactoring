@@ -6,6 +6,7 @@ from collections import defaultdict
 import numpy as np
 import pandas as pd
 import torch
+from learning_types import LearningTypes
 from ml_models import MLModels
 from settings import (
     ADD_RAW_FEAT,
@@ -15,10 +16,20 @@ from settings import (
     EMBEDDINGS,
     FEATURE_NETWORKS_INTEGRATION,
     INT_MOTHOD,
+    LEARNING,
     OPTIONAL_FEATURE_SELECTION,
     X_TIME2,
 )
-from sklearn.metrics import accuracy_score, f1_score
+from sklearn.metrics import (
+    accuracy_score,
+    adjusted_rand_score,
+    completeness_score,
+    f1_score,
+    homogeneity_completeness_v_measure,
+    homogeneity_score,
+    silhouette_score,
+    v_measure_score,
+)
 from torch_geometric.data import Data
 
 DEVICE = torch.device("cpu")
@@ -106,52 +117,67 @@ def ml(trial_combs, trials, labels, train_valid_idx, test_idx):
     model, search = m.train_ml_model_factory()
     results = defaultdict(list)
 
-    for ii in range(X_TIME2):
-        model.fit(X_train, y_train)  # ?
+    for _ in range(X_TIME2):
+        model.fit(X_train, y_train)
         predictions = model.predict(X_test)
-        y_pred = [round(value) for value in predictions]
-        # preds = model.predict(pd.DataFrame(data.x.numpy()))
-        results["av_result_acc"].append(round(accuracy_score(y_test, y_pred), 3))
-        results["av_result_wf1"].append(
-            round(f1_score(y_test, y_pred, average="weighted"), 3)
-        )
-        results["av_result_mf1"].append(
-            round(f1_score(y_test, y_pred, average="macro"), 3)
-        )
-        tr_predictions = model.predict(X_train)
-        tr_pred = [round(value) for value in tr_predictions]
-        results["av_tr_result_acc"].append(round(accuracy_score(y_train, tr_pred), 3))
-        results["av_tr_result_wf1"].append(
-            round(f1_score(y_train, tr_pred, average="weighted"), 3)
-        )
-        results["av_tr_result_mf1"].append(
-            round(f1_score(y_train, tr_pred, average="macro"), 3)
-        )
-    # ?
-    if X_TIME2 == 1:
-        results["av_result_acc"].append(round(accuracy_score(y_test, y_pred), 3))
-        results["av_result_wf1"].append(
-            round(f1_score(y_test, y_pred, average="weighted"), 3)
-        )
-        results["av_result_mf1"].append(
-            round(f1_score(y_test, y_pred, average="macro"), 3)
-        )
-        results["av_tr_result_acc"].append(round(accuracy_score(y_train, tr_pred), 3))
-        results["av_tr_result_wf1"].append(
-            round(f1_score(y_train, tr_pred, average="weighted"), 3)
-        )
-        results["av_tr_result_mf1"].append(
-            round(f1_score(y_train, tr_pred, average="macro"), 3)
-        )
+        final_result = defaultdict()
+        if LearningTypes.clustering.name == LEARNING:
+            final_result[
+                "homogeneity_completeness_v_measure"
+            ] = homogeneity_completeness_v_measure()
+            final_result["homogeneity"] = homogeneity_score()
+            final_result["Completeness"] = completeness_score()
+            final_result["v_measure"] = v_measure_score()
+            final_result["adjusted_rand"] = adjusted_rand_score()
+            final_result["silhouette"] = silhouette_score()
 
-    final_result = defaultdict()
-    final_result["result_acc"] = calculate_result(results["av_result_acc"])
-    final_result["result_wf1"] = calculate_result(results["av_result_wf1"])
-    final_result["result_mf1"] = calculate_result(results["av_result_mf1"])
-    final_result["tr_result_acc"] = calculate_result(results["av_tr_result_acc"])
-    final_result["tr_result_wf1"] = calculate_result(results["av_tr_result_wf1"])
-    final_result["tr_result_mf1"] = calculate_result(results["av_tr_result_mf1"])
-    final_result["best_parameters"] = search.best_params_
+        else:
+            y_pred = [round(value) for value in predictions]
+            # preds = model.predict(pd.DataFrame(data.x.numpy()))
+            results["av_result_acc"].append(round(accuracy_score(y_test, y_pred), 3))
+            results["av_result_wf1"].append(
+                round(f1_score(y_test, y_pred, average="weighted"), 3)
+            )
+            results["av_result_mf1"].append(
+                round(f1_score(y_test, y_pred, average="macro"), 3)
+            )
+            tr_predictions = model.predict(X_train)
+            tr_pred = [round(value) for value in tr_predictions]
+            results["av_tr_result_acc"].append(
+                round(accuracy_score(y_train, tr_pred), 3)
+            )
+            results["av_tr_result_wf1"].append(
+                round(f1_score(y_train, tr_pred, average="weighted"), 3)
+            )
+            results["av_tr_result_mf1"].append(
+                round(f1_score(y_train, tr_pred, average="macro"), 3)
+            )
+
+        if X_TIME2 == 1:
+            results["av_result_acc"].append(round(accuracy_score(y_test, y_pred), 3))
+            results["av_result_wf1"].append(
+                round(f1_score(y_test, y_pred, average="weighted"), 3)
+            )
+            results["av_result_mf1"].append(
+                round(f1_score(y_test, y_pred, average="macro"), 3)
+            )
+            results["av_tr_result_acc"].append(
+                round(accuracy_score(y_train, tr_pred), 3)
+            )
+            results["av_tr_result_wf1"].append(
+                round(f1_score(y_train, tr_pred, average="weighted"), 3)
+            )
+            results["av_tr_result_mf1"].append(
+                round(f1_score(y_train, tr_pred, average="macro"), 3)
+            )
+
+        final_result["result_acc"] = calculate_result(results["av_result_acc"])
+        final_result["result_wf1"] = calculate_result(results["av_result_wf1"])
+        final_result["result_mf1"] = calculate_result(results["av_result_mf1"])
+        final_result["tr_result_acc"] = calculate_result(results["av_tr_result_acc"])
+        final_result["tr_result_wf1"] = calculate_result(results["av_tr_result_wf1"])
+        final_result["tr_result_mf1"] = calculate_result(results["av_tr_result_mf1"])
+        final_result["best_parameters"] = search.best_params_
     return final_result
 
 

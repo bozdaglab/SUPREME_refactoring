@@ -28,7 +28,8 @@ def node_feature_generation(labels):
     is_first = True
     for file in os.listdir(DATA):
         feat = pd.read_csv(f"{DATA}/{file}")
-        feat = feat.drop("Unnamed: 0", axis=1)
+        if "Unnamed: 0" in feat.columns:
+            feat = feat.drop("Unnamed: 0", axis=1)
         if not any(
             FEATURE_SELECTION_PER_NETWORK
         ):  # any does not make sense. We need it seperate for each dataset
