@@ -1,17 +1,21 @@
-import logging
-import os
-import pickle
-import time
+
 import warnings
 from itertools import combinations
 from typing import List
+
 import pandas as pd
 import torch
 from dotenv import find_dotenv, load_dotenv
+from helper import ratio
 from learning_types import LearningTypes
 from node_generation import node_embedding_generation, node_feature_generation
-from helper import ratio
 from set_logging import set_log_config
+import logging
+import os
+import pathlib
+import pickle
+import time
+import timeit
 from settings import (
     BASE_DATAPATH,
     DATA,
@@ -38,7 +42,7 @@ if not os.path.exists(EMBEDDINGS):
 
 
 def combine_trails() -> List[List[int]]:
-    t = range(len(os.listdir(EMBEDDINGS/LEARNING)))
+    t = range(len(os.listdir(EMBEDDINGS / LEARNING)))
     trial_combs = []
     for r in range(1, len(t) + 1):
         trial_combs.extend([list(x) for x in combinations(t, r)])
@@ -71,9 +75,7 @@ start = time.time()
 pickle_to_csv()
 logger.info("SUPREME is running..")
 new_x = node_feature_generation(labels=labels)
-train_valid_idx, test_idx = torch.utils.data.random_split(
-    new_x, ratio(new_x=new_x)
-)
+train_valid_idx, test_idx = torch.utils.data.random_split(new_x, ratio(new_x=new_x))
 # node_embedding_generation(new_x=new_x, labels=labels)
 start2 = time.time()
 
