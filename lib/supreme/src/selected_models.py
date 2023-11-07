@@ -17,7 +17,9 @@ from settings import (
     WALK_PER_NODE,
     P,
     Q,
+    LEARNING,
 )
+import pandas as pd
 from sklearn.model_selection import RepeatedStratifiedKFold, train_test_split
 from torch_geometric.data import Data
 from torch_geometric.nn import Node2Vec
@@ -29,32 +31,40 @@ EPS = 1e-15
 
 
 class GCNSupervised:
-    def __init__(self, learning, new_x, labels) -> None:
-        self.learning = learning
-        self.new_x = new_x
-        self.labels = labels
+    def __init__(self, labels) -> None:
+        self.labels= labels
 
-    def prepare_data(self, new_x, edge_index, col):
+    def prepare_data(
+            self, 
+            new_x: torch, 
+            edge_index: pd.DataFrame, 
+            col: Optional[str] = None, 
+            multi_labels: bool = False
+        ) -> Data:
+
         train_valid_idx, test_idx = torch.utils.data.random_split(
-            self.new_x, ratio(self.new_x)
+            new_x, ratio(new_x=new_x)
         )
-        data = make_data(new_x, edge_index)
-        data.y = torch.tensor(self.labels[col].values, dtype=torch.float32)
-        return train_test_valid(data, train_valid_idx, test_idx)
+        data = make_data(new_x=new_x, edge_index=edge_index)
+        if multi_labels:
+            data.y = torch.tensor(self.labels[col].values, dtype=torch.float32)
+        else:
+            data.y = torch.tensor(self.labels.values.reshape(1,-1)[0]).long()
+        return train_test_valid(data=data, train_valid_idx=train_valid_idx, test_idx=test_idx, labels=self.labels)
 
     def select_model(self):
-        if self.learning == "regression":
+        if LEARNING == "regression":
             criterion = torch.nn.MSELoss()
             out_size = 1
-        elif self.learning == "classification":
+        elif LEARNING == "classification":
             criterion = torch.nn.CrossEntropyLoss()
-            out_size = torch.tensor(self.labels).shape[0]
+            out_size = torch.tensor(len(self.labels.value_counts().unique())) #torch.tensor(self.labels).shape[0]
         return criterion, out_size
 
-    def train(self, model, optimizer, data, criterion):
+    def train(self, model, optimizer, data: Data, criterion):
         model.train()
         optimizer.zero_grad()
-        out, emb1 = model(data)
+        out, emb1, _ = model(data)
         loss = criterion(
             out[data.train_mask],
             data.y[data.train_mask],
@@ -66,7 +76,7 @@ class GCNSupervised:
     def validate(self, model, criterion, data):
         model.eval()
         with torch.no_grad():
-            out, emb2 = model(data)
+            out, emb2, _ = model(data)
             loss = criterion(
                 out[data.valid_mask],
                 data.y[data.valid_mask],
@@ -78,7 +88,7 @@ class GCNUnsupervised:
     def __init__(self, new_x) -> None:
         self.new_x = new_x
 
-    def prepare_data(self, new_x, edge_index):
+    def prepare_data(self, new_x: torch, edge_index):
         train_valid_idx, test_idx = torch.utils.data.random_split(
             self.new_x, ratio(self.new_x)
         )
@@ -166,7 +176,8 @@ class GCNUnsupervised:
         return loss, emdb
 
 
-def make_data(new_x, edge_index):
+def make_data(new_x: torch.tensor, 
+            edge_index: pd.DataFrame) -> Data:
     return Data(
         x=new_x,
         edge_index=torch.tensor(
@@ -180,16 +191,30 @@ def make_data(new_x, edge_index):
     )
 
 
-def train_test_valid(data, train_valid_idx, test_idx, labels: Optional = None):
-    if labels:
-        X = data.x[train_valid_idx.indices]
-        # y = data.y[train_valid_idx.indices]
-        y_ph = labels.iloc[:, 3][train_valid_idx.indices]
+def train_test_valid(
+        data: Data, 
+        train_valid_idx: torch, 
+        test_idx: torch, 
+        labels: Optional[pd.DataFrame] = None
+        ) -> Data:
+    
+    if any(labels):
+        try:
+            X = data.x[train_valid_idx.indices]
+            y = data.y[train_valid_idx.indices]
+        except:
+            X = data.x[train_valid_idx]
+            y = data.y[train_valid_idx]  
+        # y_ph = labels.iloc[:, 3][train_valid_idx.indices]
 
         rskf = RepeatedStratifiedKFold(n_splits=4, n_repeats=1)
-        for train_part, valid_part in rskf.split(X, y_ph):
-            train_idx = np.array(train_valid_idx.indices)[train_part]
-            valid_idx = np.array(train_valid_idx.indices)[valid_part]
+        for train_part, valid_part in rskf.split(X, y):
+            try:
+                train_idx = np.array(train_valid_idx.indices)[train_part]
+                valid_idx = np.array(train_valid_idx.indices)[valid_part]
+            except:
+                train_idx = np.array(train_valid_idx)[train_part]
+                valid_idx = np.array(train_valid_idx)[valid_part]
             break
 
     else:
@@ -208,13 +233,14 @@ def train_test_valid(data, train_valid_idx, test_idx, labels: Optional = None):
     return data
 
 
-def load_model(learning, new_x, label):
-    if learning in [LearningTypes.classification.name, LearningTypes.regression.name]:
-        return GCNSupervised(learning=learning, new_x=new_x, label=label)
-    return GCNUnsupervised(new_x=new_x)
+def load_model(labels: Optional[pd.DataFrame]) -> [GCNUnsupervised, GCNSupervised]:
+    if LEARNING == LearningTypes.clustering.name:
+        return GCNUnsupervised()
+    return GCNSupervised(labels=labels)
+    
 
 
-def select_optimizer(optimizer_type, model, learning_rate):
+def select_optimizer(optimizer_type: str, model, learning_rate: float):
     if optimizer_type == "sgd":
         return torch.optim.SGD(
             model.parameters(), lr=learning_rate, weight_decay=0.001, momentum=0.9

@@ -4,11 +4,13 @@ import pickle
 import time
 import warnings
 from itertools import combinations
-
+from typing import List
 import pandas as pd
+import torch
 from dotenv import find_dotenv, load_dotenv
 from learning_types import LearningTypes
 from node_generation import node_embedding_generation, node_feature_generation
+from helper import ratio
 from set_logging import set_log_config
 from settings import (
     BASE_DATAPATH,
@@ -35,8 +37,8 @@ if not os.path.exists(EMBEDDINGS):
     os.makedirs(EMBEDDINGS)
 
 
-def combine_trails():
-    t = range(len(os.listdir(EMBEDDINGS)))
+def combine_trails() -> List[List[int]]:
+    t = range(len(os.listdir(EMBEDDINGS/LEARNING)))
     trial_combs = []
     for r in range(1, len(t) + 1):
         trial_combs.extend([list(x) for x in combinations(t, r)])
@@ -68,9 +70,11 @@ if LEARNING in [LearningTypes.regression.name, LearningTypes.classification.name
 start = time.time()
 pickle_to_csv()
 logger.info("SUPREME is running..")
-new_x = node_feature_generation(labels)
-
-node_embedding_generation(new_x, labels, learning=LEARNING)
+new_x = node_feature_generation(labels=labels)
+train_valid_idx, test_idx = torch.utils.data.random_split(
+    new_x, ratio(new_x=new_x)
+)
+# node_embedding_generation(new_x=new_x, labels=labels)
 start2 = time.time()
 
 logger.info(
@@ -89,8 +93,8 @@ for trials in range(len(trial_combs)):
         trial_combs=trial_combs,
         trials=trials,
         labels=labels,
-        train_valid_idx=train_valid,
-        test_idx=test,
+        train_valid_idx=train_valid_idx,
+        test_idx=test_idx,
     )
 
     print(

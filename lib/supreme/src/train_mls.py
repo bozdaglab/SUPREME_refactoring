@@ -36,19 +36,19 @@ DEVICE = torch.device("cpu")
 
 
 def ml(trial_combs, trials, labels, train_valid_idx, test_idx):
-    NODE_NETWORKS2 = [os.listdir(EMBEDDINGS)[i] for i in trial_combs[trials]]
+    NODE_NETWORKS2 = [os.listdir(EMBEDDINGS/LEARNING)[i] for i in trial_combs[trials]]
     if len(NODE_NETWORKS2) == 1:
-        emb = pd.read_csv(f"{EMBEDDINGS}/{NODE_NETWORKS2[0]}")
+        emb = pd.read_csv(f"{EMBEDDINGS}/{LEARNING}/{NODE_NETWORKS2[0]}")
     else:
         for netw_base in NODE_NETWORKS2:
             emb = pd.DataFrame()
-            cur_emb = pd.read_csv(f"{EMBEDDINGS}/{netw_base}")
+            cur_emb = pd.read_csv(f"{EMBEDDINGS}/{LEARNING}/{netw_base}")
             emb = emb.append(cur_emb)
     emb = torch.tensor(emb.values, device=DEVICE)
     if ADD_RAW_FEAT is True:
         is_first = 0
-        for addFeatures in FEATURE_NETWORKS_INTEGRATION:
-            features = pd.read_csv(f"{BASE_DATAPATH}/{addFeatures}")
+        for addFeatures in os.listdir(EMBEDDINGS/LEARNING):
+            features = pd.read_csv(f"{EMBEDDINGS}/{LEARNING}/{addFeatures}")
 
             if is_first == 0:
                 allx = torch.tensor(features.values, device=DEVICE).float()
@@ -59,42 +59,7 @@ def ml(trial_combs, trials, labels, train_valid_idx, test_idx):
                 )
 
         if OPTIONAL_FEATURE_SELECTION is True:
-            allx_flat = [item for sublist in allx.tolist() for item in sublist]
-            allx_temp = robjects.FloatVector(allx_flat)
-            robjects.globalenv["allx_matrix"] = robjects.r("matrix")(allx_temp)
-            robjects.globalenv["allx_x"] = robjects.IntVector(allx.shape)
-            robjects.globalenv["labels_vector"] = robjects.IntVector(labels.tolist())
-            robjects.globalenv["top"] = BORUTA_TOP_FEATURES
-            robjects.globalenv["maxBorutaRuns"] = BORUTA_RUNS
-            robjects.r(
-                """
-                require(rFerns)
-                require(Boruta)
-                labels_vector = as.factor(labels_vector)
-                allx_matrix <- Reshape(allx_matrix, allx_x[1])
-                allx_data = data.frame(allx_matrix)
-                colnames(allx_data) <- 1:allx_x[2]
-                allx_data <- allx_data %>%
-                    mutate('Labels' = labels_vector)
-                boruta.train <- Boruta(allx_data$Labels ~ ., data= allx_data, doTrace = 0,
-                  getImp=getImpFerns, holdHistory = T, maxRuns = maxBorutaRuns)
-                thr = sort(attStats(boruta.train)$medianImp, decreasing = T)[top]
-                boruta_signif = rownames(attStats(boruta.train)[attStats(boruta.train)$medianImp >= thr,])
-                    """
-            )
-            boruta_signif = robjects.globalenv["boruta_signif"]
-            robjects.r.rm("allx_matrix")
-            robjects.r.rm("labels_vector")
-            robjects.r.rm("allx_data")
-            robjects.r.rm("boruta_signif")
-            robjects.r.rm("thr")
-            topx = []
-            for index in boruta_signif:
-                t_index = re.sub("`", "", index)
-                topx.append((np.array(allx).T)[int(t_index) - 1])
-            topx = np.array(topx)
-            emb = torch.cat((emb, torch.tensor(topx.T, device=DEVICE)), dim=1)
-            print("Top " + str(BORUTA_TOP_FEATURES) + " features have been selected.")
+            pass
         else:
             emb = torch.cat((emb, allx), dim=1)
 
@@ -110,8 +75,12 @@ def ml(trial_combs, trials, labels, train_valid_idx, test_idx):
     data.test_mask = torch.tensor(test_mask, device=DEVICE)
     X_train = pd.DataFrame(data.x[data.train_mask].numpy())
     X_test = pd.DataFrame(data.x[data.test_mask].numpy())
-    y_train = pd.DataFrame(data.y[data.train_mask].numpy()).values.ravel()
-    y_test = pd.DataFrame(data.y[data.test_mask].numpy()).values.ravel()
+    try:
+        y_train = pd.DataFrame(data.y[data.train_mask].numpy()).values.ravel()
+        y_test = pd.DataFrame(data.y[data.test_mask].numpy()).values.ravel()
+    except: 
+        y_train = pd.DataFrame(data.y.values[data.train_mask]).values.ravel()
+        y_test = pd.DataFrame(data.y.values[data.test_mask]).values.ravel()
 
     m = MLModels(model=INT_MOTHOD, x_train=X_train, y_train=y_train)
     model, search = m.train_ml_model_factory()
@@ -171,13 +140,13 @@ def ml(trial_combs, trials, labels, train_valid_idx, test_idx):
                 round(f1_score(y_train, tr_pred, average="macro"), 3)
             )
 
-        final_result["result_acc"] = calculate_result(results["av_result_acc"])
-        final_result["result_wf1"] = calculate_result(results["av_result_wf1"])
-        final_result["result_mf1"] = calculate_result(results["av_result_mf1"])
-        final_result["tr_result_acc"] = calculate_result(results["av_tr_result_acc"])
-        final_result["tr_result_wf1"] = calculate_result(results["av_tr_result_wf1"])
-        final_result["tr_result_mf1"] = calculate_result(results["av_tr_result_mf1"])
-        final_result["best_parameters"] = search.best_params_
+    final_result["result_acc"] = calculate_result(results["av_result_acc"])
+    final_result["result_wf1"] = calculate_result(results["av_result_wf1"])
+    final_result["result_mf1"] = calculate_result(results["av_result_mf1"])
+    final_result["tr_result_acc"] = calculate_result(results["av_tr_result_acc"])
+    final_result["tr_result_wf1"] = calculate_result(results["av_tr_result_wf1"])
+    final_result["tr_result_mf1"] = calculate_result(results["av_tr_result_mf1"])
+    final_result["best_parameters"] = search.best_params_
     return final_result
 
 
