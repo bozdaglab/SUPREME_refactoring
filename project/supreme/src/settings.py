@@ -26,19 +26,29 @@ GROUPBY_COLUMNS = ["CDR_Sum", "ID_Gender"]
 FEATURE_NETWORKS_INTEGRATION = [
     i for i in os.listdir(BASE_DATAPATH) if i.endswith(".csv")
 ]
-SELECT_EMB_MODEL = "gcn_e"
 FEATURE_TO_DROP = ["Med_ID", "Visit_ID", "CDR_Sum"]
 NODE_NETWORKS = FEATURE_NETWORKS_INTEGRATION.copy()
 LEARNING = "clustering"
+OPTIM = "adam"
 LEARNING_RATE = [0.01]
 HIDDEN_SIZE = [32]
 X_TIME = 50
 FEATURE_SELECTION_PER_NETWORK = [False, False, False]
 TOP_FEATURES_PER_NETWORK = [50, 50, 50]
-NODE2VEC = bool(os.environ.get("NODE2VEC"))
+
+POS_NEG = True  # bool(os.environ.get("NODE2VEC"))
+ONLY_POS = False
+DISCRIMINATOR = False
+NODE2VEC = True  # bool(os.environ.get("NODE2VEC"))
+MASKING = False  # bool(os.environ.get("MASKING"))
+
+UNNAMED = "Unnamed: 0"
 LOGGING_LEVEL = os.environ.get("LOGGING_LEVEL")
 ADD_RAW_FEAT = bool(strtobool(os.environ.get("ADD_RAW_FEAT")))
-INT_MOTHOD = os.environ.get("INT_MOTHOD")
+if LEARNING == "clustering":
+    INT_MOTHOD = os.environ.get("INT_MOTHOD_CLUSTERING")
+else:
+    INT_MOTHOD = os.environ.get("INT_MOTHOD_CLASSIFICATION")
 # X_TIME2 = os.environ.get("X_TIME2")
 X_TIME2 = 2
 # MAX_EPOCHS = os.environ.get("MAX_EPOCHS")
@@ -54,10 +64,10 @@ OPTIONAL_FEATURE_SELECTION = bool(
 BORUTA_RUNS = 100
 # BORUTA_TOP_FEATURES = os.environ.get("BORUTA_TOP_FEATURES")
 BORUTA_TOP_FEATURES = 50
-EMBEDDING_DIM=128
-WALK_LENGHT=20
-CONTEXT_SIZE=10
-WALK_PER_NODE=10
-P=1.0
-Q=1.0
-SPARSE=True
+EMBEDDING_DIM = 128
+WALK_LENGHT = 6
+CONTEXT_SIZE = 3
+WALK_PER_NODE = 3
+P = 1.0
+Q = 1.0
+SPARSE = True

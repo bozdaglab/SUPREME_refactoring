@@ -6,12 +6,24 @@ import torch
 import xgboost as xgb
 from boruta import BorutaPy
 
-from sklearn.experimental import enable_iterative_imputer
+# from sklearn.experimental import enable_iterative_imputer
 from sklearn.impute import IterativeImputer, KNNImputer
 from sklearn.tree import ExtraTreeRegressor
 
 
-def ratio(new_x: torch) -> int:
+def ratio(new_x: torch) -> List[int]:
+    """
+    This function defines the ratio for train test splitting
+
+    Parameters:
+    -----------
+    new_x:
+        Concatenated features from different omics file
+    Return:
+        A list of two values that shows the ratio between
+        the train (The first value) and test (the second one)
+
+    """
     shape = new_x.shape[0]
     train_idx = round(shape * 0.75)
     return [train_idx, shape - train_idx]
