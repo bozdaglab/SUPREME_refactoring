@@ -1,12 +1,12 @@
+from typing import Optional
+
 import torch
 import torch.nn.functional as F
 from dotenv import find_dotenv, load_dotenv
-from learning_types import LearningTypes
-from settings import HIDDEN_SIZE, INPUT_SIZE, LEARNING, OUT_SIZE
-from torch_geometric.nn import GCNConv, Linear
+from settings import HIDDEN_SIZE, INPUT_SIZE, OUT_SIZE
 from torch import Tensor
-from typing import Optional
 from torch.nn import Module
+from torch_geometric.nn import GCNConv, Linear
 from torch_geometric.utils.negative_sampling import negative_sampling
 
 load_dotenv(find_dotenv())
@@ -14,6 +14,7 @@ load_dotenv(find_dotenv())
 DEVICE = torch.device("cpu")
 MAX_LOGSTD = 10
 EPS = 1e-15
+
 
 class Net(Module):
     """
@@ -37,7 +38,6 @@ class Net(Module):
         #     predict = self.fc(x)
         return x, x_emb, predict
 
-
     def loss(self, emb, pos_rw, neg_rw):
         # Positive loss.
         start, rest = pos_rw[:, 0], pos_rw[:, 1:].contiguous()
@@ -60,8 +60,8 @@ class InnerProductDecoder(Module):
 
     where :math:`\mathbf{Z} \in \mathbb{R}^{N \times d}` denotes the latent
     space produced by the encoder."""
-    def forward(self, z: Tensor, edge_index: Tensor,
-                sigmoid: bool = True) -> Tensor:
+
+    def forward(self, z: Tensor, edge_index: Tensor, sigmoid: bool = True) -> Tensor:
         r"""Decodes the latent variables :obj:`z` into edge probabilities for
         the given node-pairs :obj:`edge_index`.
 
@@ -73,17 +73,15 @@ class InnerProductDecoder(Module):
         """
         value = (z[edge_index[0]] * z[edge_index[1]]).sum(dim=1)
         return torch.sigmoid(value) if sigmoid else value
-    
 
     def loss(self, emb, pos_rw, neg_rw: Optional[Tensor] = None):
-        pos_loss = -torch.log(self.forward(
-            emb, pos_rw, sigmoid=True)+ EPS).mean()
+        pos_loss = -torch.log(self.forward(emb, pos_rw, sigmoid=True) + EPS).mean()
         if neg_rw is None:
             neg_rw = negative_sampling(pos_rw, emb.size(0))
-        neg_loss = -torch.log(self.forward(
-            emb, neg_rw, sigmoid=True)+ EPS).mean()
-        
+        neg_loss = -torch.log(self.forward(emb, neg_rw, sigmoid=True) + EPS).mean()
+
         return pos_loss + neg_loss
+
 
 class Encoder(Module):
     def __init__(self, in_size=INPUT_SIZE, hid_size=HIDDEN_SIZE, out_size=OUT_SIZE):
@@ -101,6 +99,7 @@ class Encoder(Module):
         x = self.conv2(x, edge_index, edge_weight)
         return self.conv_mu(x, edge_index), self.conv_logstd(x, edge_index)
 
+
 class Discriminator(Module):
     def __init__(self, in_channels, hidden_channels, out_channels):
         super().__init__()
@@ -112,10 +111,10 @@ class Discriminator(Module):
         x = self.lin1(x).relu()
         x = self.lin2(x).relu()
         return self.lin3(x)
-    
 
-    def kl_loss(self, mu: Optional[Tensor] = None,
-                logstd: Optional[Tensor] = None) -> Tensor:
+    def kl_loss(
+        self, mu: Optional[Tensor] = None, logstd: Optional[Tensor] = None
+    ) -> Tensor:
         r"""Computes the KL loss, either for the passed arguments :obj:`mu`
         and :obj:`logstd`, or based on latent variables from last encoding.
 
@@ -128,11 +127,11 @@ class Discriminator(Module):
                 computation of :math:`\log\sigma^2`. (default: :obj:`None`)
         """
         return -0.5 * torch.mean(
-            torch.sum(1 + 2 * logstd - mu**2 - logstd.exp()**2, dim=1))
-    
+            torch.sum(1 + 2 * logstd - mu**2 - logstd.exp() ** 2, dim=1)
+        )
+
     def loss(self, emb, pos_rw, discriminator):
-        discriminator_optimizer = torch.optim.Adam(discriminator.parameters(),
-                                                lr=0.001)
+        discriminator_optimizer = torch.optim.Adam(discriminator.parameters(), lr=0.001)
         for _ in range(5):
             discriminator_optimizer.zero_grad()
             real = torch.sigmoid(discriminator(torch.randn_like(emb)))
@@ -151,11 +150,10 @@ class Discriminator(Module):
 
 
 class EncoderDecoder(Module):
-    def __init__(self, 
-                 encode: Module[Net, Encoder], 
-                 decoder: Module[InnerProductDecoder, Discriminator]
+    def __init__(
+        self,
+        encode: Module[Net, Encoder],
+        decoder: Module[InnerProductDecoder, Discriminator],
     ) -> None:
-        
         self.encoder = encode
         self.decoder = decoder
-    

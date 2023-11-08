@@ -7,24 +7,13 @@ import pandas as pd
 import torch
 from learning_types import LearningTypes
 from ml_models import MLModels
-from settings import (
-    ADD_RAW_FEAT,
-    EMBEDDINGS,
-    INT_MOTHOD,
-    LEARNING,
-    OPTIONAL_FEATURE_SELECTION,
-    X_TIME2,
-)
-from sklearn.metrics import (
-    accuracy_score,
-    adjusted_rand_score,
-    completeness_score,
-    f1_score,
-    homogeneity_completeness_v_measure,
-    homogeneity_score,
-    silhouette_score,
-    v_measure_score,
-)
+from settings import (ADD_RAW_FEAT, EMBEDDINGS, INT_MOTHOD, LEARNING,
+                      OPTIONAL_FEATURE_SELECTION, X_TIME2)
+from sklearn.metrics import (accuracy_score, adjusted_rand_score,
+                             completeness_score, f1_score,
+                             homogeneity_completeness_v_measure,
+                             homogeneity_score, silhouette_score,
+                             v_measure_score)
 from torch_geometric.data import Data
 
 DEVICE = torch.device("cpu")

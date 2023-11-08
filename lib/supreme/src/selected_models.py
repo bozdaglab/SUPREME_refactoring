@@ -3,21 +3,20 @@ from typing import Optional
 import numpy as np
 import pandas as pd
 import torch
-from torch import Tensor
 from helper import masking_indexes, ratio
 from learning_types import LearningTypes
-from module import InnerProductDecoder, EncoderDecoder, Discriminator, Encoder
-from torch.nn import Module
+from module import Discriminator, Encoder, InnerProductDecoder
+
 # from torch_geometric.nn import GAE, VGAE
 from settings import (
     CONTEXT_SIZE,
+    DISCRIMINATOR,
     EMBEDDING_DIM,
     LEARNING,
     MASKING,
     NODE2VEC,
-    POS_NEG,
     ONLY_POS,
-    DISCRIMINATOR,
+    POS_NEG,
     SPARSE,
     WALK_LENGHT,
     WALK_PER_NODE,
@@ -25,6 +24,9 @@ from settings import (
     Q,
 )
 from sklearn.model_selection import RepeatedStratifiedKFold, train_test_split
+from torch import Tensor
+
+# from torch.nn import Module
 from torch_geometric.data import Data
 from torch_geometric.nn import Node2Vec
 from torch_geometric.utils.negative_sampling import negative_sampling
@@ -147,7 +149,9 @@ class GCNUnsupervised:
             discriminator = Discriminator()
             mu, logstd = encoder(data)
             emb = mu + torch.randn_like(logstd) * torch.exp(logstd)
-            loss = self.loss_discriminator(emb=emb, data=data.pos_edge_labels, discriminator=discriminator)
+            loss = self.loss_discriminator(
+                emb=emb, data=data.pos_edge_labels, discriminator=discriminator
+            )
             loss += (1 / num_nodes) * discriminator.kl_loss(mu, logstd)
         else:
             model.train()
@@ -191,18 +195,19 @@ class GCNUnsupervised:
         return pos_loss + neg_loss
 
     def loss_pos_only(self, emb, pos_rw, neg_rw: Optional[Tensor] = None):
-        pos_loss = -torch.log(InnerProductDecoder(
-            emb, pos_rw, sigmoid=True)+ EPS).mean()
+        pos_loss = -torch.log(
+            InnerProductDecoder(emb, pos_rw, sigmoid=True) + EPS
+        ).mean()
         if neg_rw is None:
             neg_rw = negative_sampling(pos_rw, emb.size(0))
-        neg_loss = -torch.log(InnerProductDecoder(
-            emb, neg_rw, sigmoid=True)+ EPS).mean()
-        
+        neg_loss = -torch.log(
+            InnerProductDecoder(emb, neg_rw, sigmoid=True) + EPS
+        ).mean()
+
         return pos_loss + neg_loss
-        
+
     def loss_discriminator(self, emb, pos_rw, discriminator):
-        discriminator_optimizer = torch.optim.Adam(discriminator.parameters(),
-                                                lr=0.001)
+        discriminator_optimizer = torch.optim.Adam(discriminator.parameters(), lr=0.001)
         for _ in range(5):
             discriminator_optimizer.zero_grad()
             real = torch.sigmoid(discriminator(torch.randn_like(emb)))
@@ -218,7 +223,6 @@ class GCNUnsupervised:
         real_loss = -torch.log(real + EPS).mean()
         loss += real_loss
         return loss
-
 
     def validate(self, data, model, criterion):
         # model = GAE(model)
