@@ -7,13 +7,24 @@ import pandas as pd
 import torch
 from learning_types import LearningTypes
 from ml_models import MLModels
-from settings import (ADD_RAW_FEAT, EMBEDDINGS, INT_MOTHOD, LEARNING,
-                      OPTIONAL_FEATURE_SELECTION, X_TIME2)
-from sklearn.metrics import (accuracy_score, adjusted_rand_score,
-                             completeness_score, f1_score,
-                             homogeneity_completeness_v_measure,
-                             homogeneity_score, silhouette_score,
-                             v_measure_score)
+from settings import (
+    ADD_RAW_FEAT,
+    EMBEDDINGS,
+    INT_MOTHOD,
+    LEARNING,
+    OPTIONAL_FEATURE_SELECTION,
+    X_TIME2,
+)
+from sklearn.metrics import (
+    accuracy_score,
+    adjusted_rand_score,
+    completeness_score,
+    f1_score,
+    homogeneity_completeness_v_measure,
+    homogeneity_score,
+    silhouette_score,
+    v_measure_score,
+)
 from torch_geometric.data import Data
 
 DEVICE = torch.device("cpu")
@@ -97,6 +108,7 @@ def ml(trial_combs, trials, labels, train_valid_idx, test_idx):
             final_result["v_measure"] = v_measure_score(y_train, model.labels_)
             final_result["adjusted_rand"] = adjusted_rand_score(y_train, model.labels_)
             final_result["silhouette"] = silhouette_score(X_train, model.labels_)
+            # add std and mean (calculate_result)
 
         else:
             y_pred = [round(value) for value in predictions]
@@ -140,19 +152,20 @@ def ml(trial_combs, trials, labels, train_valid_idx, test_idx):
                     round(f1_score(y_train, tr_pred, average="macro"), 3)
                 )
 
-            final_result["result_acc"] = calculate_result(results["av_result_acc"])
-            final_result["result_wf1"] = calculate_result(results["av_result_wf1"])
-            final_result["result_mf1"] = calculate_result(results["av_result_mf1"])
-            final_result["tr_result_acc"] = calculate_result(
-                results["av_tr_result_acc"]
-            )
-            final_result["tr_result_wf1"] = calculate_result(
-                results["av_tr_result_wf1"]
-            )
-            final_result["tr_result_mf1"] = calculate_result(
-                results["av_tr_result_mf1"]
-            )
-            final_result["best_parameters"] = search.best_params_
+    # final_result["result_acc"] = calculate_result(results["av_result_acc"])
+    # final_result["result_wf1"] = calculate_result(results["av_result_wf1"])
+    # final_result["result_mf1"] = calculate_result(results["av_result_mf1"])
+    # final_result["tr_result_acc"] = calculate_result(
+    #     results["av_tr_result_acc"]
+    # )
+    # final_result["tr_result_wf1"] = calculate_result(
+    #     results["av_tr_result_wf1"]
+    # )
+    # final_result["tr_result_mf1"] = calculate_result(
+    #     results["av_tr_result_mf1"]
+    # )
+    # final_result["best_parameters"] = search.best_params_
+
     return final_result
 
 
