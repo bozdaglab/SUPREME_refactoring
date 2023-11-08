@@ -1,9 +1,10 @@
 import torch
 import torch.nn.functional as F
 from dotenv import find_dotenv, load_dotenv
-from settings import HIDDEN_SIZE, INPUT_SIZE, OUT_SIZE, LEARNING
-from torch_geometric.nn import GCNConv, Linear
 from learning_types import LearningTypes
+from settings import HIDDEN_SIZE, INPUT_SIZE, LEARNING, OUT_SIZE
+from torch_geometric.nn import GCNConv, Linear
+
 DEVICE = torch.device("cpu")
 load_dotenv(find_dotenv())
 

@@ -28,7 +28,8 @@ FEATURE_NETWORKS_INTEGRATION = [
 ]
 FEATURE_TO_DROP = ["Med_ID", "Visit_ID", "CDR_Sum"]
 NODE_NETWORKS = FEATURE_NETWORKS_INTEGRATION.copy()
-LEARNING = "classification"
+LEARNING = "clustering"
+OPTIM = "adam"
 LEARNING_RATE = [0.01]
 HIDDEN_SIZE = [32]
 X_TIME = 50
@@ -39,7 +40,10 @@ NODE2VEC = bool(os.environ.get("NODE2VEC"))
 MASKING = bool(os.environ.get("MASKING"))
 LOGGING_LEVEL = os.environ.get("LOGGING_LEVEL")
 ADD_RAW_FEAT = bool(strtobool(os.environ.get("ADD_RAW_FEAT")))
-INT_MOTHOD = os.environ.get("INT_MOTHOD")
+if LEARNING == "clustering":
+    INT_MOTHOD = os.environ.get("INT_MOTHOD_CLUSTERING")
+else:
+    INT_MOTHOD = os.environ.get("INT_MOTHOD_CLASSIFICATION")
 # X_TIME2 = os.environ.get("X_TIME2")
 X_TIME2 = 2
 # MAX_EPOCHS = os.environ.get("MAX_EPOCHS")

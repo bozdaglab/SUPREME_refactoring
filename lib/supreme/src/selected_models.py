@@ -1,6 +1,7 @@
 from typing import Optional
 
 import numpy as np
+import pandas as pd
 import torch
 from helper import masking_indexes, ratio
 from learning_types import LearningTypes
@@ -9,6 +10,7 @@ from learning_types import LearningTypes
 from settings import (
     CONTEXT_SIZE,
     EMBEDDING_DIM,
+    LEARNING,
     MASKING,
     NODE2VEC,
     POS_NEG,
@@ -17,9 +19,7 @@ from settings import (
     WALK_PER_NODE,
     P,
     Q,
-    LEARNING,
 )
-import pandas as pd
 from sklearn.model_selection import RepeatedStratifiedKFold, train_test_split
 from torch_geometric.data import Data
 from torch_geometric.nn import Node2Vec
@@ -31,26 +31,30 @@ EPS = 1e-15
 
 
 class GCNSupervised:
-    def __init__(self, labels) -> None:
-        self.labels= labels
+    def __init__(self, new_x, labels) -> None:
+        self.new_x = new_x
+        self.labels = labels
 
     def prepare_data(
-            self, 
-            new_x: torch, 
-            edge_index: pd.DataFrame, 
-            col: Optional[str] = None, 
-            multi_labels: bool = False
-        ) -> Data:
-
+        self,
+        edge_index: pd.DataFrame,
+        col: Optional[str] = None,
+        multi_labels: bool = False,
+    ) -> Data:
         train_valid_idx, test_idx = torch.utils.data.random_split(
-            new_x, ratio(new_x=new_x)
+            self.new_x, ratio(new_x=self.new_x)
         )
-        data = make_data(new_x=new_x, edge_index=edge_index)
+        data = make_data(new_x=self.new_x, edge_index=edge_index)
         if multi_labels:
             data.y = torch.tensor(self.labels[col].values, dtype=torch.float32)
         else:
-            data.y = torch.tensor(self.labels.values.reshape(1,-1)[0]).long()
-        return train_test_valid(data=data, train_valid_idx=train_valid_idx, test_idx=test_idx, labels=self.labels)
+            data.y = torch.tensor(self.labels.values.reshape(1, -1)[0]).long()
+        return train_test_valid(
+            data=data,
+            train_valid_idx=train_valid_idx,
+            test_idx=test_idx,
+            labels=self.labels,
+        )
 
     def select_model(self):
         if LEARNING == "regression":
@@ -58,7 +62,9 @@ class GCNSupervised:
             out_size = 1
         elif LEARNING == "classification":
             criterion = torch.nn.CrossEntropyLoss()
-            out_size = torch.tensor(len(self.labels.value_counts().unique())) #torch.tensor(self.labels).shape[0]
+            out_size = torch.tensor(
+                len(self.labels.value_counts().unique())
+            )  # torch.tensor(self.labels).shape[0]
         return criterion, out_size
 
     def train(self, model, optimizer, data: Data, criterion):
@@ -88,11 +94,11 @@ class GCNUnsupervised:
     def __init__(self, new_x) -> None:
         self.new_x = new_x
 
-    def prepare_data(self, new_x: torch, edge_index):
+    def prepare_data(self, edge_index: pd.DataFrame) -> Data:
         train_valid_idx, test_idx = torch.utils.data.random_split(
             self.new_x, ratio(self.new_x)
         )
-        data = make_data(new_x, edge_index)
+        data = make_data(new_x=self.new_x, edge_index=edge_index)
         if NODE2VEC:
             node2vec = Node2Vec(
                 edge_index=data.edge_index,
@@ -105,7 +111,7 @@ class GCNUnsupervised:
                 sparse=SPARSE,
             ).to(DEVICE)
             pos, neg = node2vec.sample([10, 15])
-            data = make_data(new_x, edge_index)
+            data = make_data(self.new_x, edge_index)
             data.pos_edge_labels = torch.tensor(pos, device=DEVICE).long()
             data.neg_edge_labels = torch.tensor(neg, device=DEVICE).long()
         elif MASKING:
@@ -122,7 +128,9 @@ class GCNUnsupervised:
             )
         else:
             negative_sampling(data.edge_index)
-        return train_test_valid(data, train_valid_idx, test_idx)
+        return train_test_valid(
+            data=data, train_valid_idx=train_valid_idx, test_idx=test_idx
+        )
 
     def select_model(self):
         criterion = torch.nn.MSELoss()
@@ -132,7 +140,7 @@ class GCNUnsupervised:
     def train(self, model, optimizer, data, criterion):
         model.train()
         optimizer.zero_grad()
-        out, emb = model(data, model)
+        out, emb, prediction = model(data=data)
         if POS_NEG:
             """
             https://arxiv.org/abs/1607.00653,
@@ -171,13 +179,12 @@ class GCNUnsupervised:
         # model = GAE(model)
         model.eval()
         with torch.no_grad():
-            z, emdb = model(data, model)
+            z, emdb, _ = model(data=data)
             loss = criterion(z[data.valid_mask], data.x[data.valid_mask])
         return loss, emdb
 
 
-def make_data(new_x: torch.tensor, 
-            edge_index: pd.DataFrame) -> Data:
+def make_data(new_x: torch.tensor, edge_index: pd.DataFrame) -> Data:
     return Data(
         x=new_x,
         edge_index=torch.tensor(
@@ -192,19 +199,18 @@ def make_data(new_x: torch.tensor,
 
 
 def train_test_valid(
-        data: Data, 
-        train_valid_idx: torch, 
-        test_idx: torch, 
-        labels: Optional[pd.DataFrame] = None
-        ) -> Data:
-    
-    if any(labels):
+    data: Data,
+    train_valid_idx: torch,
+    test_idx: torch,
+    labels: Optional[pd.DataFrame] = None,
+) -> Data:
+    if labels:
         try:
             X = data.x[train_valid_idx.indices]
             y = data.y[train_valid_idx.indices]
         except:
             X = data.x[train_valid_idx]
-            y = data.y[train_valid_idx]  
+            y = data.y[train_valid_idx]
         # y_ph = labels.iloc[:, 3][train_valid_idx.indices]
 
         rskf = RepeatedStratifiedKFold(n_splits=4, n_repeats=1)
@@ -233,11 +239,12 @@ def train_test_valid(
     return data
 
 
-def load_model(labels: Optional[pd.DataFrame]) -> [GCNUnsupervised, GCNSupervised]:
+def load_model(
+    new_x: torch, labels: Optional[pd.DataFrame]
+) -> [GCNUnsupervised, GCNSupervised]:
     if LEARNING == LearningTypes.clustering.name:
-        return GCNUnsupervised()
-    return GCNSupervised(labels=labels)
-    
+        return GCNUnsupervised(new_x=new_x)
+    return GCNSupervised(new_x=new_x, labels=labels)
 
 
 def select_optimizer(optimizer_type: str, model, learning_rate: float):

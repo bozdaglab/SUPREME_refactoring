@@ -1,7 +1,9 @@
 import logging
+from typing import Optional
 
 import lightgbm as lgb
 import numpy as np
+import pandas as pd
 from settings import X_TIME
 from sklearn.cluster import KMeans
 from sklearn.ensemble import RandomForestClassifier
@@ -15,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 
 class MLModels:
-    def __init__(self, model, x_train, y_train):
+    def __init__(self, model, x_train, y_train: Optional[pd.DataFrame] = None):
         self.model = model
         self.x_train = x_train
         self.y_train = y_train
