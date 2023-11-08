@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, Union
 
 import torch
 import torch.nn.functional as F
@@ -37,6 +37,11 @@ class Net(Module):
         # if LearningTypes.clustering.name == LEARNING:
         #     predict = self.fc(x)
         return x, x_emb, predict
+
+    def compute(self, emb, start, rest, rw):
+        h_start = emb[start].view(rw.size(0), 1, emb.size(1))
+        h_rest = emb[rest.view(-1)].view(rw.size(0), -1, emb.size(1))
+        return (h_start * h_rest).sum(dim=-1).view(-1)
 
     def loss(self, emb, pos_rw, neg_rw):
         # Positive loss.
@@ -152,8 +157,8 @@ class Discriminator(Module):
 class EncoderDecoder(Module):
     def __init__(
         self,
-        encode: Module[Net, Encoder],
-        decoder: Module[InnerProductDecoder, Discriminator],
+        encode: Union[Net, Encoder],
+        decoder: Union[InnerProductDecoder, Discriminator],
     ) -> None:
         self.encoder = encode
         self.decoder = decoder

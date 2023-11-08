@@ -35,11 +35,14 @@ HIDDEN_SIZE = [32]
 X_TIME = 50
 FEATURE_SELECTION_PER_NETWORK = [False, False, False]
 TOP_FEATURES_PER_NETWORK = [50, 50, 50]
-POS_NEG = False  # bool(os.environ.get("NODE2VEC"))
+
+POS_NEG = True  # bool(os.environ.get("NODE2VEC"))
 ONLY_POS = False
-DISCRIMINATOR = True
-NODE2VEC = bool(os.environ.get("NODE2VEC"))
-MASKING = bool(os.environ.get("MASKING"))
+DISCRIMINATOR = False
+NODE2VEC = True  # bool(os.environ.get("NODE2VEC"))
+MASKING = False  # bool(os.environ.get("MASKING"))
+
+UNNAMED = "Unnamed: 0"
 LOGGING_LEVEL = os.environ.get("LOGGING_LEVEL")
 ADD_RAW_FEAT = bool(strtobool(os.environ.get("ADD_RAW_FEAT")))
 if LEARNING == "clustering":

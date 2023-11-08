@@ -21,6 +21,7 @@ from settings import (
     LABELS,
     LEARNING,
     LEARNING_RATE,
+    UNNAMED,
 )
 from train_mls import ml
 
@@ -47,6 +48,10 @@ def combine_trails() -> List[List[int]]:
 
 
 def pickle_to_csv():
+    """
+    Search in the given repository, and load pickle files, if exist,
+    and convert them to csv with the same name
+    """
     for file in os.listdir(BASE_DATAPATH):
         if file.endswith(".pkl"):
             with open(f"{BASE_DATAPATH}/{file}", "rb") as pkl_file:
@@ -64,7 +69,8 @@ labels = None
 for file in os.listdir(LABELS):
     if file:
         labels = pd.read_csv(f"{LABELS}/{file}")
-        labels = labels.drop("Unnamed: 0", axis=1)
+        if UNNAMED in labels:
+            labels = labels.drop(UNNAMED, axis=1)
 
 
 start = time.time()

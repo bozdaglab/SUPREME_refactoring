@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, Tuple, Union
 
 import numpy as np
 import pandas as pd
@@ -25,6 +25,7 @@ from settings import (
 )
 from sklearn.model_selection import RepeatedStratifiedKFold, train_test_split
 from torch import Tensor
+from torch.nn import CrossEntropyLoss, MSELoss
 
 # from torch.nn import Module
 from torch_geometric.data import Data
@@ -37,7 +38,7 @@ EPS = 1e-15
 
 
 class GCNSupervised:
-    def __init__(self, new_x, labels) -> None:
+    def __init__(self, new_x: Tensor, labels) -> None:
         self.new_x = new_x
         self.labels = labels
 
@@ -47,6 +48,21 @@ class GCNSupervised:
         col: Optional[str] = None,
         multi_labels: bool = False,
     ) -> Data:
+        """
+        Create a data object by adding features, edge_index, edge_attr.
+
+        Parameters:
+        -----------
+        edge_index:
+            Adjacency matrix
+        col:
+            For regressions (?)
+        multi_labels:
+            For regression (?)
+
+        Return:
+            A data object ready to pass to GCN
+        """
         train_valid_idx, test_idx = torch.utils.data.random_split(
             self.new_x, ratio(new_x=self.new_x)
         )
@@ -62,12 +78,13 @@ class GCNSupervised:
             labels=self.labels,
         )
 
-    def select_model(self):
+    def model_loss_output(self) -> Tuple[Union[MSELoss, CrossEntropyLoss], int]:
         if LEARNING == "regression":
-            criterion = torch.nn.MSELoss()
+            criterion = MSELoss()
             out_size = 1
         elif LEARNING == "classification":
-            criterion = torch.nn.CrossEntropyLoss()
+            criterion = CrossEntropyLoss()
+            # should be int. Check later
             out_size = torch.tensor(
                 len(self.labels.value_counts().unique())
             )  # torch.tensor(self.labels).shape[0]
@@ -97,10 +114,23 @@ class GCNSupervised:
 
 
 class GCNUnsupervised:
-    def __init__(self, new_x) -> None:
+    def __init__(self, new_x: Tensor) -> None:
         self.new_x = new_x
 
     def prepare_data(self, edge_index: pd.DataFrame) -> Data:
+        """
+        Create a data object by adding features, edge_index, edge_attr.
+        For unsupervised GCN, this function
+            1) creates positive and negative edges using Node2vec or
+            2) make masking in the input data.
+
+        Parameters:
+        -----------
+        edge_index:
+            Adjacency matrix
+        Return:
+            A data object ready to pass to GCN
+        """
         train_valid_idx, test_idx = torch.utils.data.random_split(
             self.new_x, ratio(self.new_x)
         )
@@ -117,7 +147,6 @@ class GCNUnsupervised:
                 sparse=SPARSE,
             ).to(DEVICE)
             pos, neg = node2vec.sample([10, 15])
-            data = make_data(self.new_x, edge_index)
             data.pos_edge_labels = torch.tensor(pos, device=DEVICE).long()
             data.neg_edge_labels = torch.tensor(neg, device=DEVICE).long()
         elif MASKING:
@@ -136,8 +165,12 @@ class GCNUnsupervised:
             data=data, train_valid_idx=train_valid_idx, test_idx=test_idx
         )
 
-    def select_model(self):
-        criterion = torch.nn.MSELoss()
+    def model_loss_output(self) -> Tuple[MSELoss, int]:
+        """
+        This function selects the loss function and the output size
+
+        """
+        criterion = MSELoss()
         out_size = self.new_x.shape[-1]
         return criterion, out_size
 
@@ -157,7 +190,7 @@ class GCNUnsupervised:
             model.train()
             optimizer.zero_grad()
             emb, out, prediction = model(data=data)
-            if POS_NEG:
+            if POS_NEG:  # Done
                 """
                 https://arxiv.org/abs/1607.00653,
                 https://arxiv.org/abs/1611.0730,
@@ -167,7 +200,7 @@ class GCNUnsupervised:
                 loss = self.loss_pos_neg(
                     emb, pos_rw=data.pos_edge_labels, neg_rw=data.neg_edge_labels
                 )
-            elif ONLY_POS:
+            elif ONLY_POS:  # Done
                 loss = self.loss_pos_only(emb=emb, pos_rw=data.pos_edge_labels)
 
             else:
@@ -175,7 +208,11 @@ class GCNUnsupervised:
                 loss = criterion(out[data.train_mask], data.x[data.train_mask])
         loss.backward()
         optimizer.step()
-        return out
+
+        if not isinstance(loss, float):
+            return float(loss)
+
+        return loss
 
     def compute(self, emb, start, rest, rw):
         h_start = emb[start].view(rw.size(0), 1, emb.size(1))
@@ -233,7 +270,20 @@ class GCNUnsupervised:
         return loss, emdb
 
 
-def make_data(new_x: torch.tensor, edge_index: pd.DataFrame) -> Data:
+def make_data(new_x: Tensor, edge_index: pd.DataFrame) -> Data:
+    """
+    Generate a data object that holds node features, edge_index and edge_attr.
+
+    Parameters:
+    -----------
+    new_x:
+        Concatenated features from different omics file
+    edge_index:
+        Adjacency matrix
+
+    Return:
+        A data object
+    """
     return Data(
         x=new_x,
         edge_index=torch.tensor(
@@ -249,10 +299,29 @@ def make_data(new_x: torch.tensor, edge_index: pd.DataFrame) -> Data:
 
 def train_test_valid(
     data: Data,
-    train_valid_idx: torch,
-    test_idx: torch,
+    train_valid_idx: Tensor,
+    test_idx: Tensor,
     labels: Optional[pd.DataFrame] = None,
 ) -> Data:
+    """
+    This function adds train, test, and validation data to the data object.
+    If a label is available, it applies a Repeated Stratified K-Fold cross-validator.
+    Otherwise, split the tensor into random train and test subsets.
+
+    Parameters:
+    -----------
+    data:
+        Data object
+    train_valid_idx:
+        train validation indexes
+    test_idx:
+        test indexes
+    labels:
+        Dataset labels
+
+    Return:
+        A data object that holds train, test, and validation indexes
+    """
     if labels:
         try:
             X = data.x[train_valid_idx.indices]
@@ -289,8 +358,19 @@ def train_test_valid(
 
 
 def load_model(
-    new_x: torch, labels: Optional[pd.DataFrame]
-) -> [GCNUnsupervised, GCNSupervised]:
+    new_x: Tensor, labels: Optional[pd.DataFrame]
+) -> Union[GCNUnsupervised, GCNSupervised]:
+    """
+    Load supervised or unsupervised GCN
+    Parameters:
+    -----------
+    new_x:
+        Concatenated features from different omics file
+    labels:
+        Dataset labels
+    Return:
+        Supervised or unsupervised GCN
+    """
     if LEARNING == LearningTypes.clustering.name:
         return GCNUnsupervised(new_x=new_x)
     return GCNSupervised(new_x=new_x, labels=labels)

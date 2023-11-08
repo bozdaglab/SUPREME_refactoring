@@ -21,18 +21,33 @@ from settings import (
     MIN_EPOCHS,
     OPTIM,
     PATIENCE,
+    UNNAMED,
     X_TIME2,
 )
+from torch import Tensor
 
 DEVICE = torch.device("cpu")
 
 
-def node_feature_generation(labels: Optional[pd.DataFrame]):
+def node_feature_generation(labels: Optional[pd.DataFrame]) -> Tensor:
+    """
+    Load features from each omic separately, apply feature selection if needed,
+    and contact them together
+
+    Parameters:
+    ----------
+    labels:
+        Dataset labels in case we want to apply feature selection algorithems
+
+
+    Return:
+        Concatenated features from different omics file
+    """
     is_first = True
     for file in os.listdir(DATA):
         feat = pd.read_csv(f"{DATA}/{file}")
-        if "Unnamed: 0" in feat.columns:
-            feat = feat.drop("Unnamed: 0", axis=1)
+        if UNNAMED in feat.columns:
+            feat = feat.drop(UNNAMED, axis=1)
         if not any(
             FEATURE_SELECTION_PER_NETWORK
         ):  # any does not make sense. We need it seperate for each dataset
@@ -52,23 +67,38 @@ def node_feature_generation(labels: Optional[pd.DataFrame]):
 
 
 def node_embedding_generation(
-    new_x: torch,
+    new_x: Tensor,
     labels: Optional[pd.DataFrame],
 ) -> None:
+    """
+    This function loads edges, turns SUPREME to supervised or unsupervised
+    and generates embeddings for each omic
+
+    Parameters:
+    ----------
+    new_x:
+        Concatenated features from different omics file
+    labels:
+        Dataset labels
+
+    Return:
+        Generate embeddings for each omic
+    """
     if not os.path.exists(EMBEDDINGS / LEARNING):
         os.mkdir(EMBEDDINGS / LEARNING)
     learning_model = load_model(new_x=new_x, labels=labels)
     for edge_file in os.listdir(EDGES):
         edge_index = pd.read_csv(f"{EDGES}/{edge_file}")
-        if "Unnamed: 0" in edge_index.columns:
-            edge_index.drop("Unnamed: 0", axis=1, inplace=True)
+        if UNNAMED in edge_index.columns:
+            edge_index.drop(UNNAMED, axis=1, inplace=True)
         best_ValidLoss = np.Inf
         for learning_rate, hid_size in product(LEARNING_RATE, HIDDEN_SIZE):
             av_valid_losses = []
             for _ in range(X_TIME2):
                 data = learning_model.prepare_data(edge_index=edge_index)
-                criterion, out_size = learning_model.select_model()
+                criterion, out_size = learning_model.model_loss_output()
                 in_size = data.x.shape[1]
+                # Chose here which model and loss we have to continue
                 model = Net(in_size=in_size, hid_size=hid_size, out_size=out_size)
                 optimizer = select_optimizer(OPTIM, model, learning_rate)
                 min_valid_loss = np.Inf
