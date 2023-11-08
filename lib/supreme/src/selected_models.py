@@ -3,9 +3,11 @@ from typing import Optional
 import numpy as np
 import pandas as pd
 import torch
+from torch import Tensor
 from helper import masking_indexes, ratio
 from learning_types import LearningTypes
-
+from module import InnerProductDecoder, EncoderDecoder, Discriminator, Encoder
+from torch.nn import Module
 # from torch_geometric.nn import GAE, VGAE
 from settings import (
     CONTEXT_SIZE,
@@ -14,6 +16,8 @@ from settings import (
     MASKING,
     NODE2VEC,
     POS_NEG,
+    ONLY_POS,
+    DISCRIMINATOR,
     SPARSE,
     WALK_LENGHT,
     WALK_PER_NODE,
@@ -126,8 +130,6 @@ class GCNUnsupervised:
             data.neg_edge_labels[0:non_mask_edges] = torch.randint(
                 num_nodes, (non_mask_edges.sum(),), device=DEVICE
             )
-        else:
-            negative_sampling(data.edge_index)
         return train_test_valid(
             data=data, train_valid_idx=train_valid_idx, test_idx=test_idx
         )
@@ -138,22 +140,35 @@ class GCNUnsupervised:
         return criterion, out_size
 
     def train(self, model, optimizer, data, criterion):
-        model.train()
-        optimizer.zero_grad()
-        out, emb, prediction = model(data=data)
-        if POS_NEG:
-            """
-            https://arxiv.org/abs/1607.00653,
-            https://arxiv.org/abs/1611.0730,
-            https://arxiv.org/abs/1706.02216
-            """
-
-            loss = self.loss(
-                out, emb, pos_rw=data.pos_edge_labels, neg_rw=data.neg_edge_labels
-            )
+        if DISCRIMINATOR:
+            num_nodes = maybe_num_nodes(data.edge_index)
+            # model = EncoderDecoder(encoder = Encoder(), decoder= Discriminator())
+            encoder = Encoder()
+            discriminator = Discriminator()
+            mu, logstd = encoder(data)
+            emb = mu + torch.randn_like(logstd) * torch.exp(logstd)
+            loss = self.loss_discriminator(emb=emb, data=data.pos_edge_labels, discriminator=discriminator)
+            loss += (1 / num_nodes) * discriminator.kl_loss(mu, logstd)
         else:
-            # encoder_decoder loss, criterion is MSE
-            loss = criterion(out[data.train_mask], data.x[data.train_mask])
+            model.train()
+            optimizer.zero_grad()
+            emb, out, prediction = model(data=data)
+            if POS_NEG:
+                """
+                https://arxiv.org/abs/1607.00653,
+                https://arxiv.org/abs/1611.0730,
+                https://arxiv.org/abs/1706.02216
+                """
+
+                loss = self.loss_pos_neg(
+                    emb, pos_rw=data.pos_edge_labels, neg_rw=data.neg_edge_labels
+                )
+            elif ONLY_POS:
+                loss = self.loss_pos_only(emb=emb, pos_rw=data.pos_edge_labels)
+
+            else:
+                # encoder_decoder loss, criterion is MSE
+                loss = criterion(out[data.train_mask], data.x[data.train_mask])
         loss.backward()
         optimizer.step()
         return out
@@ -163,7 +178,7 @@ class GCNUnsupervised:
         h_rest = emb[rest.view(-1)].view(rw.size(0), -1, emb.size(1))
         return (h_start * h_rest).sum(dim=-1).view(-1)
 
-    def loss(self, out, emb, pos_rw, neg_rw):
+    def loss_pos_neg(self, emb, pos_rw, neg_rw):
         # Positive loss.
         start, rest = pos_rw[:, 0], pos_rw[:, 1:].contiguous()
         out = self.compute(emb, start, rest, pos_rw)
@@ -174,6 +189,36 @@ class GCNUnsupervised:
         neg_loss = -torch.log(1 - torch.sigmoid(out) + EPS).mean()
 
         return pos_loss + neg_loss
+
+    def loss_pos_only(self, emb, pos_rw, neg_rw: Optional[Tensor] = None):
+        pos_loss = -torch.log(InnerProductDecoder(
+            emb, pos_rw, sigmoid=True)+ EPS).mean()
+        if neg_rw is None:
+            neg_rw = negative_sampling(pos_rw, emb.size(0))
+        neg_loss = -torch.log(InnerProductDecoder(
+            emb, neg_rw, sigmoid=True)+ EPS).mean()
+        
+        return pos_loss + neg_loss
+        
+    def loss_discriminator(self, emb, pos_rw, discriminator):
+        discriminator_optimizer = torch.optim.Adam(discriminator.parameters(),
+                                                lr=0.001)
+        for _ in range(5):
+            discriminator_optimizer.zero_grad()
+            real = torch.sigmoid(discriminator(torch.randn_like(emb)))
+            fake = torch.sigmoid(discriminator(emb.detach()))
+            real_loss = -torch.log(real + EPS).mean()
+            fake_loss = -torch.log(1 - fake + EPS).mean()
+            discriminator_loss = real_loss + fake_loss
+            discriminator_loss.backward()
+            discriminator_optimizer.step()
+
+        loss = self.loss_pos_only(emb, pos_rw)
+        real = torch.sigmoid(discriminator(emb))
+        real_loss = -torch.log(real + EPS).mean()
+        loss += real_loss
+        return loss
+
 
     def validate(self, data, model, criterion):
         # model = GAE(model)
