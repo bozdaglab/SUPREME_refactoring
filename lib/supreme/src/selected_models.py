@@ -3,9 +3,9 @@ from typing import Optional, Tuple, Union
 import numpy as np
 import pandas as pd
 import torch
-from helper import masking_indexes, ratio
-from learning_types import LearningTypes
-from module import Discriminator, Encoder, InnerProductDecoder
+from helper import masking_indexes, random_split
+from learning_types import LearningTypes, OptimizerType
+from module import SUPREME, Discriminator, Encoder, EncoderDecoder, InnerProductDecoder
 
 # from torch_geometric.nn import GAE, VGAE
 from settings import (
@@ -25,9 +25,7 @@ from settings import (
 )
 from sklearn.model_selection import RepeatedStratifiedKFold, train_test_split
 from torch import Tensor
-from torch.nn import CrossEntropyLoss, MSELoss
-
-# from torch.nn import Module
+from torch.nn import CrossEntropyLoss, Module, MSELoss
 from torch_geometric.data import Data
 from torch_geometric.nn import Node2Vec
 from torch_geometric.utils.negative_sampling import negative_sampling
@@ -63,9 +61,7 @@ class GCNSupervised:
         Return:
             A data object ready to pass to GCN
         """
-        train_valid_idx, test_idx = torch.utils.data.random_split(
-            self.new_x, ratio(new_x=self.new_x)
-        )
+        train_valid_idx, test_idx = random_split(new_x=self.new_x)
         data = make_data(new_x=self.new_x, edge_index=edge_index)
         if multi_labels:
             data.y = torch.tensor(self.labels[col].values, dtype=torch.float32)
@@ -131,9 +127,7 @@ class GCNUnsupervised:
         Return:
             A data object ready to pass to GCN
         """
-        train_valid_idx, test_idx = torch.utils.data.random_split(
-            self.new_x, ratio(self.new_x)
-        )
+        train_valid_idx, test_idx = random_split(new_x=self.new_x)
         data = make_data(new_x=self.new_x, edge_index=edge_index)
         if NODE2VEC:
             node2vec = Node2Vec(
@@ -197,11 +191,11 @@ class GCNUnsupervised:
                 https://arxiv.org/abs/1706.02216
                 """
 
-                loss = self.loss_pos_neg(
+                loss = model.loss(
                     emb, pos_rw=data.pos_edge_labels, neg_rw=data.neg_edge_labels
                 )
             elif ONLY_POS:  # Done
-                loss = self.loss_pos_only(emb=emb, pos_rw=data.pos_edge_labels)
+                loss = model.loss(emb=emb, pos_rw=data.pos_edge_labels)
 
             else:
                 # encoder_decoder loss, criterion is MSE
@@ -213,23 +207,6 @@ class GCNUnsupervised:
             return float(loss)
 
         return loss
-
-    def compute(self, emb, start, rest, rw):
-        h_start = emb[start].view(rw.size(0), 1, emb.size(1))
-        h_rest = emb[rest.view(-1)].view(rw.size(0), -1, emb.size(1))
-        return (h_start * h_rest).sum(dim=-1).view(-1)
-
-    def loss_pos_neg(self, emb, pos_rw, neg_rw):
-        # Positive loss.
-        start, rest = pos_rw[:, 0], pos_rw[:, 1:].contiguous()
-        out = self.compute(emb, start, rest, pos_rw)
-        pos_loss = -torch.log(torch.sigmoid(out) + EPS).mean()
-        # Negative loss.
-        start, rest = neg_rw[:, 0], neg_rw[:, 1:].contiguous()
-        out = self.compute(emb, start, rest, pos_rw)
-        neg_loss = -torch.log(1 - torch.sigmoid(out) + EPS).mean()
-
-        return pos_loss + neg_loss
 
     def loss_pos_only(self, emb, pos_rw, neg_rw: Optional[Tensor] = None):
         pos_loss = -torch.log(
@@ -353,7 +330,6 @@ def train_test_valid(
     data.test_mask = torch.tensor(
         masking_indexes(data=data, indexes=test_idx), device=DEVICE
     )
-
     return data
 
 
@@ -376,14 +352,40 @@ def load_model(
     return GCNSupervised(new_x=new_x, labels=labels)
 
 
-def select_optimizer(optimizer_type: str, model, learning_rate: float):
-    if optimizer_type == "sgd":
+def select_optimizer(
+    optimizer_type: str, model: Module, learning_rate: float
+) -> torch.optim:
+    """
+    This function selects the optimizer
+
+    Parameters:
+    -----------
+    optimizer_type:
+        Name of the optimizer
+    model:
+        Our model, supervised or unsupervised GCN
+    learning_rate:
+        Learning rate
+
+    Return:
+        Torch optimizer
+    """
+    if optimizer_type == OptimizerType.sgd.name:
         return torch.optim.SGD(
             model.parameters(), lr=learning_rate, weight_decay=0.001, momentum=0.9
         )
-    elif optimizer_type == "adam":
+    elif optimizer_type == OptimizerType.adam.name:
         return torch.optim.Adam(model.parameters(), lr=learning_rate)
-    elif optimizer_type == "sparse_adam":
+    elif optimizer_type == OptimizerType.sparse_adam.name:
         return torch.optim.SparseAdam(list(model.parameters()), lr=learning_rate)
     else:
         raise NotImplementedError
+
+
+def select_model(in_size: int, hid_size: int, out_size: int):
+    if True:
+        return SUPREME(in_size=in_size, hid_size=hid_size, out_size=out_size)
+    if True:
+        return EncoderDecoder(encoder=Encoder, discriminator=Discriminator)
+    else:
+        return

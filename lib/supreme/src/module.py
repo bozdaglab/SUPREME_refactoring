@@ -16,7 +16,7 @@ MAX_LOGSTD = 10
 EPS = 1e-15
 
 
-class Net(Module):
+class SUPREME(Module):
     """
     Training SUPREME model
     """
@@ -157,8 +157,11 @@ class Discriminator(Module):
 class EncoderDecoder(Module):
     def __init__(
         self,
-        encode: Union[Net, Encoder],
+        encode: Union[SUPREME, Encoder],
         decoder: Union[InnerProductDecoder, Discriminator],
+        in_size: int,
+        hid_size: int,
+        out_size: int,
     ) -> None:
         self.encoder = encode
         self.decoder = decoder
