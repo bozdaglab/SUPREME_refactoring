@@ -6,7 +6,7 @@ import torch
 from helper import masking_indexes, random_split
 from learning_types import LearningTypes, OptimizerType
 from module import SUPREME, Discriminator, Encoder, EncoderDecoder, InnerProductDecoder
-
+from collections import namedtuple
 # from torch_geometric.nn import GAE, VGAE
 from settings import (
     CONTEXT_SIZE,
@@ -172,14 +172,14 @@ class GCNUnsupervised:
         if DISCRIMINATOR:
             num_nodes = maybe_num_nodes(data.edge_index)
             # model = EncoderDecoder(encoder = Encoder(), decoder= Discriminator())
-            encoder = Encoder()
-            discriminator = Discriminator()
-            mu, logstd = encoder(data)
+            # encoder = Encoder()
+            # discriminator = Discriminator()
+            mu, logstd = model.encoder(data, data.edge_index)
             emb = mu + torch.randn_like(logstd) * torch.exp(logstd)
             loss = self.loss_discriminator(
-                emb=emb, data=data.pos_edge_labels, discriminator=discriminator
+                emb=emb, data=data.pos_edge_labels, discriminator=model.decoder
             )
-            loss += (1 / num_nodes) * discriminator.kl_loss(mu, logstd)
+            loss += (1 / num_nodes) * model.decoder.kl_loss(mu, logstd)
         else:
             model.train()
             optimizer.zero_grad()
@@ -370,6 +370,11 @@ def select_optimizer(
     Return:
         Torch optimizer
     """
+    if isinstance(model, EncoderDecoder):
+        losses = namedtuple("losses", ["encoder_loss", "decoder_loss"])
+        encoder_loss = torch.optim.Adam(model.encoder.parameters(), lr=learning_rate)
+        decoder_loss = torch.optim.Adam(model.decoder.parameters(), lr=learning_rate)
+        return losses(encoder_loss=encoder_loss, decoder_loss=decoder_loss)
     if optimizer_type == OptimizerType.sgd.name:
         return torch.optim.SGD(
             model.parameters(), lr=learning_rate, weight_decay=0.001, momentum=0.9
@@ -383,9 +388,15 @@ def select_optimizer(
 
 
 def select_model(in_size: int, hid_size: int, out_size: int):
-    if True:
+    if LEARNING in  [LearningTypes.classification.name, LearningTypes.regression.name]:
         return SUPREME(in_size=in_size, hid_size=hid_size, out_size=out_size)
-    if True:
-        return EncoderDecoder(encoder=Encoder, discriminator=Discriminator)
-    else:
-        return
+    elif LearningTypes.clustering.name:
+        if ONLY_POS:
+            encoder = SUPREME(in_size=in_size, hid_size=hid_size, out_size=out_size)
+            decoder = InnerProductDecoder() 
+        elif DISCRIMINATOR:
+            encoder = Encoder(in_size=in_size, hid_size=hid_size, out_size=out_size)
+            decoder = Discriminator(in_size=in_size, hid_size=hid_size, out_size=out_size)
+        else:
+           return SUPREME(in_size=in_size, hid_size=hid_size, out_size=out_size)
+        return EncoderDecoder(encoder=encoder, decoder=decoder)

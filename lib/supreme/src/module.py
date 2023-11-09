@@ -8,7 +8,8 @@ from torch import Tensor
 from torch.nn import Module
 from torch_geometric.nn import GCNConv, Linear
 from torch_geometric.utils.negative_sampling import negative_sampling
-
+from dataclasses import dataclass
+from torch_geometric.utils.num_nodes import maybe_num_nodes
 load_dotenv(find_dotenv())
 
 DEVICE = torch.device("cpu")
@@ -21,11 +22,10 @@ class SUPREME(Module):
     Training SUPREME model
     """
 
-    def __init__(self, in_size=INPUT_SIZE, hid_size=HIDDEN_SIZE, out_size=OUT_SIZE):
+    def __init__(self, in_size: int, hid_size: int, out_size: int):
         super().__init__()
         self.conv1 = GCNConv(in_size, hid_size)
         self.conv2 = GCNConv(hid_size, out_size)
-        # self.fc = Linear(out_size, out_size)
 
     def forward(self, data):
         predict = None
@@ -34,8 +34,6 @@ class SUPREME(Module):
         x = F.relu(x_emb)
         x = F.dropout(x, training=self.training)
         x = self.conv2(x, edge_index, edge_weight)
-        # if LearningTypes.clustering.name == LEARNING:
-        #     predict = self.fc(x)
         return x, x_emb, predict
 
     def compute(self, emb, start, rest, rw):
@@ -88,34 +86,45 @@ class InnerProductDecoder(Module):
         return pos_loss + neg_loss
 
 
+# class Encoder(Module):
+#     def __init__(self, in_size=INPUT_SIZE, hid_size=HIDDEN_SIZE, out_size=OUT_SIZE):
+#         super().__init__()
+#         self.conv1 = GCNConv(in_size, hid_size)
+#         self.conv2 = GCNConv(hid_size, out_size)
+#         self.conv_mu = GCNConv(hid_size, out_size)
+#         self.conv_logstd = GCNConv(hid_size, out_size)
+
+#     def forward(self, data):
+#         x, edge_index, edge_weight = data.x, data.edge_index, data.edge_attr
+#         x_emb = self.conv1(x, edge_index, edge_weight)
+#         x = F.relu(x_emb)
+#         x = F.dropout(x, training=self.training)
+#         x = self.conv2(x, edge_index, edge_weight)
+#         return self.conv_mu(x, edge_index), self.conv_logstd(x, edge_index)
 class Encoder(Module):
-    def __init__(self, in_size=INPUT_SIZE, hid_size=HIDDEN_SIZE, out_size=OUT_SIZE):
+    def __init__(self,in_size=INPUT_SIZE, hid_size=HIDDEN_SIZE, out_size=OUT_SIZE):
         super().__init__()
         self.conv1 = GCNConv(in_size, hid_size)
-        self.conv2 = GCNConv(hid_size, out_size)
         self.conv_mu = GCNConv(hid_size, out_size)
         self.conv_logstd = GCNConv(hid_size, out_size)
 
-    def forward(self, x, data):
-        x, edge_index, edge_weight = data.x, data.edge_index, data.edge_attr
-        x_emb = self.conv1(x, edge_index, edge_weight)
-        x = F.relu(x_emb)
-        x = F.dropout(x, training=self.training)
-        x = self.conv2(x, edge_index, edge_weight)
+    def forward(self, x, edge_index):
+        x = self.conv1(x, edge_index).relu()
         return self.conv_mu(x, edge_index), self.conv_logstd(x, edge_index)
 
 
 class Discriminator(Module):
-    def __init__(self, in_channels, hidden_channels, out_channels):
+    def __init__(self, in_size=INPUT_SIZE, hid_size=HIDDEN_SIZE, out_size=OUT_SIZE):
         super().__init__()
-        self.lin1 = Linear(in_channels, hidden_channels)
-        self.lin2 = Linear(hidden_channels, hidden_channels)
-        self.lin3 = Linear(hidden_channels, out_channels)
+        self.lin1 = Linear(in_size, hid_size)
+        self.lin2 = Linear(hid_size, hid_size)
+        self.lin3 = Linear(hid_size, out_size)
 
     def forward(self, x):
         x = self.lin1(x).relu()
         x = self.lin2(x).relu()
         return self.lin3(x)
+
 
     def kl_loss(
         self, mu: Optional[Tensor] = None, logstd: Optional[Tensor] = None
@@ -135,33 +144,48 @@ class Discriminator(Module):
             torch.sum(1 + 2 * logstd - mu**2 - logstd.exp() ** 2, dim=1)
         )
 
-    def loss(self, emb, pos_rw, discriminator):
-        discriminator_optimizer = torch.optim.Adam(discriminator.parameters(), lr=0.001)
+    def loss(self, emb, pos_rw, discriminator, mu, logstd, num_nodes):
         for _ in range(5):
-            discriminator_optimizer.zero_grad()
+            discriminator.zero_grad()
             real = torch.sigmoid(discriminator(torch.randn_like(emb)))
             fake = torch.sigmoid(discriminator(emb.detach()))
             real_loss = -torch.log(real + EPS).mean()
             fake_loss = -torch.log(1 - fake + EPS).mean()
             discriminator_loss = real_loss + fake_loss
             discriminator_loss.backward()
-            discriminator_optimizer.step()
+            discriminator.step()
 
         loss = self.loss_pos_only(emb, pos_rw)
         real = torch.sigmoid(discriminator(emb))
         real_loss = -torch.log(real + EPS).mean()
         loss += real_loss
+        loss += (1 / num_nodes) * discriminator.kl_loss(mu, logstd)
         return loss
 
 
-class EncoderDecoder(Module):
-    def __init__(
-        self,
-        encode: Union[SUPREME, Encoder],
-        decoder: Union[InnerProductDecoder, Discriminator],
-        in_size: int,
-        hid_size: int,
-        out_size: int,
-    ) -> None:
-        self.encoder = encode
+
+
+class EncoderDecoder:
+    def __init__(self, 
+                 encoder: Union[SUPREME, Encoder],
+                 decoder: Union[InnerProductDecoder, Discriminator]):
+        self.encoder = encoder
         self.decoder = decoder
+
+    def train(self, model, optimizer, data, criterion):
+        mu, logstd = self.encoder(data)
+        emb = mu + torch.randn_like(logstd) * torch.exp(logstd)
+        num_nodes = maybe_num_nodes(data.edge_index)
+        loss = self.decoder.loss(emb=emb, 
+                  data=data.pos_edge_labels, 
+                  discriminator=self.decoder, 
+                  mu=mu, 
+                  logstd=logstd,
+                  num_nodes=num_nodes)
+        loss.backward()
+        self.encoder.step()
+
+        if not isinstance(loss, float):
+            return float(loss)
+
+        return loss
