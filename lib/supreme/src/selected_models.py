@@ -1,3 +1,4 @@
+from collections import namedtuple
 from typing import Optional, Tuple, Union
 
 import numpy as np
@@ -5,9 +6,11 @@ import pandas as pd
 import torch
 from helper import masking_indexes, random_split
 from learning_types import LearningTypes, OptimizerType
-from module import SUPREME, Discriminator, Encoder, EncoderDecoder, InnerProductDecoder
-from collections import namedtuple
-# from torch_geometric.nn import GAE, VGAE
+from module import (  # , EncoderDecoder, InnerProductDecoder
+    SUPREME,
+    Discriminator,
+    Encoder,
+)
 from settings import (
     CONTEXT_SIZE,
     DISCRIMINATOR,
@@ -27,7 +30,7 @@ from sklearn.model_selection import RepeatedStratifiedKFold, train_test_split
 from torch import Tensor
 from torch.nn import CrossEntropyLoss, Module, MSELoss
 from torch_geometric.data import Data
-from torch_geometric.nn import Node2Vec
+from torch_geometric.nn import ARGVA, GAE, Node2Vec
 from torch_geometric.utils.negative_sampling import negative_sampling
 from torch_geometric.utils.num_nodes import maybe_num_nodes
 
@@ -141,8 +144,8 @@ class GCNUnsupervised:
                 sparse=SPARSE,
             ).to(DEVICE)
             pos, neg = node2vec.sample([10, 15])
-            data.pos_edge_labels = torch.tensor(pos, device=DEVICE).long()
-            data.neg_edge_labels = torch.tensor(neg, device=DEVICE).long()
+            data.pos_edge_labels = torch.tensor(pos.T, device=DEVICE).long()
+            data.neg_edge_labels = torch.tensor(neg.T, device=DEVICE).long()
         elif MASKING:
             # mask some edges and used those as negative values
             num_nodes = maybe_num_nodes(data.edge_index)
@@ -370,10 +373,17 @@ def select_optimizer(
     Return:
         Torch optimizer
     """
-    if isinstance(model, EncoderDecoder):
+    if isinstance(model, ARGVA):
         losses = namedtuple("losses", ["encoder_loss", "decoder_loss"])
         encoder_loss = torch.optim.Adam(model.encoder.parameters(), lr=learning_rate)
-        decoder_loss = torch.optim.Adam(model.decoder.parameters(), lr=learning_rate)
+        try:
+            decoder_loss = torch.optim.Adam(
+                model.decoder.parameters(), lr=learning_rate
+            )
+        except ValueError:
+            decoder_loss = torch.optim.Adam(
+                model.discriminator.parameters(), lr=learning_rate
+            )
         return losses(encoder_loss=encoder_loss, decoder_loss=decoder_loss)
     if optimizer_type == OptimizerType.sgd.name:
         return torch.optim.SGD(
@@ -388,15 +398,17 @@ def select_optimizer(
 
 
 def select_model(in_size: int, hid_size: int, out_size: int):
-    if LEARNING in  [LearningTypes.classification.name, LearningTypes.regression.name]:
+    if LEARNING in [LearningTypes.classification.name, LearningTypes.regression.name]:
         return SUPREME(in_size=in_size, hid_size=hid_size, out_size=out_size)
-    elif LearningTypes.clustering.name:
+    else:
         if ONLY_POS:
             encoder = SUPREME(in_size=in_size, hid_size=hid_size, out_size=out_size)
-            decoder = InnerProductDecoder() 
+            return GAE(encoder=encoder)
         elif DISCRIMINATOR:
             encoder = Encoder(in_size=in_size, hid_size=hid_size, out_size=out_size)
-            decoder = Discriminator(in_size=in_size, hid_size=hid_size, out_size=out_size)
+            discriminator = Discriminator(
+                in_size=in_size, hid_size=hid_size, out_size=out_size
+            )
+            return ARGVA(encoder=encoder, discriminator=discriminator).to(DEVICE)
         else:
-           return SUPREME(in_size=in_size, hid_size=hid_size, out_size=out_size)
-        return EncoderDecoder(encoder=encoder, decoder=decoder)
+            return SUPREME(in_size=in_size, hid_size=hid_size, out_size=out_size)
