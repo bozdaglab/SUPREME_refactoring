@@ -1,13 +1,16 @@
+from collections import namedtuple
 from typing import Optional, Tuple, Union
 
 import numpy as np
 import pandas as pd
 import torch
-from helper import masking_indexes, ratio
-from learning_types import LearningTypes
-from module import Discriminator, Encoder, InnerProductDecoder
-
-# from torch_geometric.nn import GAE, VGAE
+from helper import masking_indexes, random_split
+from learning_types import LearningTypes, OptimizerType
+from module import (
+    SUPREME,
+    Discriminator,
+    Encoder,
+)
 from settings import (
     CONTEXT_SIZE,
     DISCRIMINATOR,
@@ -23,11 +26,10 @@ from settings import (
     P,
     Q,
 )
+from module import EncoderDecoder, EncoderInnerProduct
 from sklearn.model_selection import RepeatedStratifiedKFold, train_test_split
 from torch import Tensor
-from torch.nn import CrossEntropyLoss, MSELoss
-
-# from torch.nn import Module
+from torch.nn import CrossEntropyLoss, Module, MSELoss
 from torch_geometric.data import Data
 from torch_geometric.nn import Node2Vec
 from torch_geometric.utils.negative_sampling import negative_sampling
@@ -63,9 +65,7 @@ class GCNSupervised:
         Return:
             A data object ready to pass to GCN
         """
-        train_valid_idx, test_idx = torch.utils.data.random_split(
-            self.new_x, ratio(new_x=self.new_x)
-        )
+        train_valid_idx, test_idx = random_split(new_x=self.new_x)
         data = make_data(new_x=self.new_x, edge_index=edge_index)
         if multi_labels:
             data.y = torch.tensor(self.labels[col].values, dtype=torch.float32)
@@ -131,9 +131,7 @@ class GCNUnsupervised:
         Return:
             A data object ready to pass to GCN
         """
-        train_valid_idx, test_idx = torch.utils.data.random_split(
-            self.new_x, ratio(self.new_x)
-        )
+        train_valid_idx, test_idx = random_split(new_x=self.new_x)
         data = make_data(new_x=self.new_x, edge_index=edge_index)
         if NODE2VEC:
             node2vec = Node2Vec(
@@ -147,8 +145,8 @@ class GCNUnsupervised:
                 sparse=SPARSE,
             ).to(DEVICE)
             pos, neg = node2vec.sample([10, 15])
-            data.pos_edge_labels = torch.tensor(pos, device=DEVICE).long()
-            data.neg_edge_labels = torch.tensor(neg, device=DEVICE).long()
+            data.pos_edge_labels = torch.tensor(pos.T, device=DEVICE).long()
+            data.neg_edge_labels = torch.tensor(neg.T, device=DEVICE).long()
         elif MASKING:
             # mask some edges and used those as negative values
             num_nodes = maybe_num_nodes(data.edge_index)
@@ -173,102 +171,6 @@ class GCNUnsupervised:
         criterion = MSELoss()
         out_size = self.new_x.shape[-1]
         return criterion, out_size
-
-    def train(self, model, optimizer, data, criterion):
-        if DISCRIMINATOR:
-            num_nodes = maybe_num_nodes(data.edge_index)
-            # model = EncoderDecoder(encoder = Encoder(), decoder= Discriminator())
-            encoder = Encoder()
-            discriminator = Discriminator()
-            mu, logstd = encoder(data)
-            emb = mu + torch.randn_like(logstd) * torch.exp(logstd)
-            loss = self.loss_discriminator(
-                emb=emb, data=data.pos_edge_labels, discriminator=discriminator
-            )
-            loss += (1 / num_nodes) * discriminator.kl_loss(mu, logstd)
-        else:
-            model.train()
-            optimizer.zero_grad()
-            emb, out, prediction = model(data=data)
-            if POS_NEG:  # Done
-                """
-                https://arxiv.org/abs/1607.00653,
-                https://arxiv.org/abs/1611.0730,
-                https://arxiv.org/abs/1706.02216
-                """
-
-                loss = self.loss_pos_neg(
-                    emb, pos_rw=data.pos_edge_labels, neg_rw=data.neg_edge_labels
-                )
-            elif ONLY_POS:  # Done
-                loss = self.loss_pos_only(emb=emb, pos_rw=data.pos_edge_labels)
-
-            else:
-                # encoder_decoder loss, criterion is MSE
-                loss = criterion(out[data.train_mask], data.x[data.train_mask])
-        loss.backward()
-        optimizer.step()
-
-        if not isinstance(loss, float):
-            return float(loss)
-
-        return loss
-
-    def compute(self, emb, start, rest, rw):
-        h_start = emb[start].view(rw.size(0), 1, emb.size(1))
-        h_rest = emb[rest.view(-1)].view(rw.size(0), -1, emb.size(1))
-        return (h_start * h_rest).sum(dim=-1).view(-1)
-
-    def loss_pos_neg(self, emb, pos_rw, neg_rw):
-        # Positive loss.
-        start, rest = pos_rw[:, 0], pos_rw[:, 1:].contiguous()
-        out = self.compute(emb, start, rest, pos_rw)
-        pos_loss = -torch.log(torch.sigmoid(out) + EPS).mean()
-        # Negative loss.
-        start, rest = neg_rw[:, 0], neg_rw[:, 1:].contiguous()
-        out = self.compute(emb, start, rest, pos_rw)
-        neg_loss = -torch.log(1 - torch.sigmoid(out) + EPS).mean()
-
-        return pos_loss + neg_loss
-
-    def loss_pos_only(self, emb, pos_rw, neg_rw: Optional[Tensor] = None):
-        pos_loss = -torch.log(
-            InnerProductDecoder(emb, pos_rw, sigmoid=True) + EPS
-        ).mean()
-        if neg_rw is None:
-            neg_rw = negative_sampling(pos_rw, emb.size(0))
-        neg_loss = -torch.log(
-            InnerProductDecoder(emb, neg_rw, sigmoid=True) + EPS
-        ).mean()
-
-        return pos_loss + neg_loss
-
-    def loss_discriminator(self, emb, pos_rw, discriminator):
-        discriminator_optimizer = torch.optim.Adam(discriminator.parameters(), lr=0.001)
-        for _ in range(5):
-            discriminator_optimizer.zero_grad()
-            real = torch.sigmoid(discriminator(torch.randn_like(emb)))
-            fake = torch.sigmoid(discriminator(emb.detach()))
-            real_loss = -torch.log(real + EPS).mean()
-            fake_loss = -torch.log(1 - fake + EPS).mean()
-            discriminator_loss = real_loss + fake_loss
-            discriminator_loss.backward()
-            discriminator_optimizer.step()
-
-        loss = self.loss_pos_only(emb, pos_rw)
-        real = torch.sigmoid(discriminator(emb))
-        real_loss = -torch.log(real + EPS).mean()
-        loss += real_loss
-        return loss
-
-    def validate(self, data, model, criterion):
-        # model = GAE(model)
-        model.eval()
-        with torch.no_grad():
-            z, emdb, _ = model(data=data)
-            loss = criterion(z[data.valid_mask], data.x[data.valid_mask])
-        return loss, emdb
-
 
 def make_data(new_x: Tensor, edge_index: pd.DataFrame) -> Data:
     """
@@ -353,7 +255,6 @@ def train_test_valid(
     data.test_mask = torch.tensor(
         masking_indexes(data=data, indexes=test_idx), device=DEVICE
     )
-
     return data
 
 
@@ -376,14 +277,75 @@ def load_model(
     return GCNSupervised(new_x=new_x, labels=labels)
 
 
-def select_optimizer(optimizer_type: str, model, learning_rate: float):
-    if optimizer_type == "sgd":
+def select_optimizer(
+    optimizer_type: str, model: Module, learning_rate: float
+) -> torch.optim:
+    """
+    This function selects the optimizer
+
+    Parameters:
+    -----------
+    optimizer_type:
+        Name of the optimizer
+    model:
+        Our model, supervised or unsupervised GCN
+    learning_rate:
+        Learning rate
+
+    Return:
+        Torch optimizer
+    """
+    if isinstance(model, EncoderDecoder):
+        losses = namedtuple("losses", ["encoder_loss", "decoder_loss"])
+        encoder_loss = torch.optim.Adam(model.encoder.parameters(), lr=learning_rate)
+        decoder_loss = torch.optim.Adam(
+            model.discriminator.parameters(), lr=learning_rate
+        )
+        return losses(encoder_loss=encoder_loss, decoder_loss=decoder_loss)
+    elif isinstance(model, EncoderInnerProduct):
+        return torch.optim.Adam(model.encoder.parameters(), lr=learning_rate)
+    
+    if optimizer_type == OptimizerType.sgd.name:
         return torch.optim.SGD(
             model.parameters(), lr=learning_rate, weight_decay=0.001, momentum=0.9
         )
-    elif optimizer_type == "adam":
+    elif optimizer_type == OptimizerType.adam.name:
         return torch.optim.Adam(model.parameters(), lr=learning_rate)
-    elif optimizer_type == "sparse_adam":
+    elif optimizer_type == OptimizerType.sparse_adam.name:
         return torch.optim.SparseAdam(list(model.parameters()), lr=learning_rate)
     else:
         raise NotImplementedError
+
+
+def select_model(in_size: int, hid_size: int, out_size: int) -> Union[SUPREME, EncoderDecoder, EncoderInnerProduct]:
+    """
+    This function selects the return of the model 
+
+    Parameters:
+    ----------
+    in_size:
+        Input size of the model
+    hid_size:
+        hidden size
+    out_size:
+        output size of the model
+
+    Return:
+        Models, whether original SUPREME, or encoder-decoder model
+    """
+    if LEARNING in [LearningTypes.classification.name, LearningTypes.regression.name]:
+        return SUPREME(in_size=in_size, hid_size=hid_size, out_size=out_size)
+    else:
+        if ONLY_POS:
+            encoder = SUPREME(in_size=in_size, hid_size=hid_size, out_size=out_size)
+            return EncoderInnerProduct(encoder=encoder)
+        elif DISCRIMINATOR:
+            encoder = Encoder(in_size=in_size, hid_size=hid_size, out_size=out_size)
+            discriminator = Discriminator(
+                in_size=in_size, hid_size=hid_size, out_size=out_size
+            )
+            return EncoderDecoder(encoder=encoder, discriminator=discriminator)
+        else:
+            return SUPREME(in_size=in_size, hid_size=hid_size, out_size=out_size)
+            # encoder_decoder loss, criterion is MSE
+            # loss = criterion(out[data.train_mask], data.x[data.train_mask])

@@ -7,8 +7,7 @@ import numpy as np
 import pandas as pd
 import torch
 from helper import select_boruta
-from module import Net
-from selected_models import load_model, select_optimizer
+from selected_models import load_model, select_model, select_optimizer
 from settings import (
     DATA,
     EDGES,
@@ -98,16 +97,15 @@ def node_embedding_generation(
                 data = learning_model.prepare_data(edge_index=edge_index)
                 criterion, out_size = learning_model.model_loss_output()
                 in_size = data.x.shape[1]
-                # Chose here which model and loss we have to continue
-                model = Net(in_size=in_size, hid_size=hid_size, out_size=out_size)
+                model = select_model(
+                    in_size=in_size, hid_size=hid_size, out_size=out_size
+                )
                 optimizer = select_optimizer(OPTIM, model, learning_rate)
                 min_valid_loss = np.Inf
                 patience_count = 0
                 for epoch in range(MAX_EPOCHS):
-                    emb = learning_model.train(
-                        model=model, optimizer=optimizer, data=data, criterion=criterion
-                    )
-                    this_valid_loss, emb = learning_model.validate(
+                    model.train(optimizer, data, criterion)
+                    this_valid_loss, emb = model.validate(
                         model=model, criterion=criterion, data=data
                     )
                     if this_valid_loss < min_valid_loss:

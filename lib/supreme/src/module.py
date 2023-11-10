@@ -5,9 +5,9 @@ import torch.nn.functional as F
 from dotenv import find_dotenv, load_dotenv
 from settings import HIDDEN_SIZE, INPUT_SIZE, OUT_SIZE
 from torch import Tensor
-from torch.nn import Module
-from torch_geometric.nn import GCNConv, Linear
-from torch_geometric.utils.negative_sampling import negative_sampling
+from torch.nn import Linear, Module
+from torch_geometric.nn import GCNConv, ARGVA, GAE
+from torch_geometric.data import Data
 
 load_dotenv(find_dotenv())
 
@@ -15,89 +15,43 @@ DEVICE = torch.device("cpu")
 MAX_LOGSTD = 10
 EPS = 1e-15
 
-
-class Net(Module):
+# https://arxiv.org/abs/1607.00653,
+# https://arxiv.org/abs/1611.0730,
+# https://arxiv.org/abs/1706.02216
+class SUPREME(Module):
     """
     Training SUPREME model
     """
 
-    def __init__(self, in_size=INPUT_SIZE, hid_size=HIDDEN_SIZE, out_size=OUT_SIZE):
+    def __init__(self, in_size: int, hid_size: int, out_size: int):
         super().__init__()
         self.conv1 = GCNConv(in_size, hid_size)
         self.conv2 = GCNConv(hid_size, out_size)
-        # self.fc = Linear(out_size, out_size)
 
     def forward(self, data):
-        predict = None
         x, edge_index, edge_weight = data.x, data.edge_index, data.edge_attr
         x_emb = self.conv1(x, edge_index, edge_weight)
         x = F.relu(x_emb)
         x = F.dropout(x, training=self.training)
         x = self.conv2(x, edge_index, edge_weight)
-        # if LearningTypes.clustering.name == LEARNING:
-        #     predict = self.fc(x)
-        return x, x_emb, predict
+        return x, x_emb
 
-    def compute(self, emb, start, rest, rw):
-        h_start = emb[start].view(rw.size(0), 1, emb.size(1))
-        h_rest = emb[rest.view(-1)].view(rw.size(0), -1, emb.size(1))
-        return (h_start * h_rest).sum(dim=-1).view(-1)
+    def train(self, data: Data):
+        self.model.train()
+        
+    @torch.no_grad()
+    def validate():
+        pass
 
-    def loss(self, emb, pos_rw, neg_rw):
-        # Positive loss.
-        start, rest = pos_rw[:, 0], pos_rw[:, 1:].contiguous()
-        out = self.compute(emb, start, rest, pos_rw)
-        pos_loss = -torch.log(torch.sigmoid(out) + EPS).mean()
-        # Negative loss.
-        start, rest = neg_rw[:, 0], neg_rw[:, 1:].contiguous()
-        out = self.compute(emb, start, rest, pos_rw)
-        neg_loss = -torch.log(1 - torch.sigmoid(out) + EPS).mean()
-
-        return pos_loss + neg_loss
-
-
-class InnerProductDecoder(Module):
-    r"""The inner product decoder from the `"Variational Graph Auto-Encoders"
-    <https://arxiv.org/abs/1611.07308>`_ paper
-
-    .. math::
-        \sigma(\mathbf{Z}\mathbf{Z}^{\top})
-
-    where :math:`\mathbf{Z} \in \mathbb{R}^{N \times d}` denotes the latent
-    space produced by the encoder."""
-
-    def forward(self, z: Tensor, edge_index: Tensor, sigmoid: bool = True) -> Tensor:
-        r"""Decodes the latent variables :obj:`z` into edge probabilities for
-        the given node-pairs :obj:`edge_index`.
-
-        Args:
-            z (torch.Tensor): The latent space :math:`\mathbf{Z}`.
-            sigmoid (bool, optional): If set to :obj:`False`, does not apply
-                the logistic sigmoid function to the output.
-                (default: :obj:`True`)
-        """
-        value = (z[edge_index[0]] * z[edge_index[1]]).sum(dim=1)
-        return torch.sigmoid(value) if sigmoid else value
-
-    def loss(self, emb, pos_rw, neg_rw: Optional[Tensor] = None):
-        pos_loss = -torch.log(self.forward(emb, pos_rw, sigmoid=True) + EPS).mean()
-        if neg_rw is None:
-            neg_rw = negative_sampling(pos_rw, emb.size(0))
-        neg_loss = -torch.log(self.forward(emb, neg_rw, sigmoid=True) + EPS).mean()
-
-        return pos_loss + neg_loss
-
-
-class Encoder(Module):
+class Encoder(torch.nn.Module):
     def __init__(self, in_size=INPUT_SIZE, hid_size=HIDDEN_SIZE, out_size=OUT_SIZE):
         super().__init__()
         self.conv1 = GCNConv(in_size, hid_size)
-        self.conv2 = GCNConv(hid_size, out_size)
+        self.conv2 = GCNConv(hid_size, hid_size)
         self.conv_mu = GCNConv(hid_size, out_size)
         self.conv_logstd = GCNConv(hid_size, out_size)
 
-    def forward(self, x, data):
-        x, edge_index, edge_weight = data.x, data.edge_index, data.edge_attr
+    def forward(self, x, edge_index, edge_weight):
         x_emb = self.conv1(x, edge_index, edge_weight)
         x = F.relu(x_emb)
         x = F.dropout(x, training=self.training)
@@ -106,59 +60,69 @@ class Encoder(Module):
 
 
 class Discriminator(Module):
-    def __init__(self, in_channels, hidden_channels, out_channels):
+    def __init__(self, in_size: int, hid_size: int, out_size: int):
         super().__init__()
-        self.lin1 = Linear(in_channels, hidden_channels)
-        self.lin2 = Linear(hidden_channels, hidden_channels)
-        self.lin3 = Linear(hidden_channels, out_channels)
+        self.lin1 = Linear(in_size, hid_size)
+        self.lin2 = Linear(hid_size, hid_size)
+        self.lin3 = Linear(hid_size, out_size)
 
     def forward(self, x):
         x = self.lin1(x).relu()
         x = self.lin2(x).relu()
         return self.lin3(x)
 
-    def kl_loss(
-        self, mu: Optional[Tensor] = None, logstd: Optional[Tensor] = None
-    ) -> Tensor:
-        r"""Computes the KL loss, either for the passed arguments :obj:`mu`
-        and :obj:`logstd`, or based on latent variables from last encoding.
 
-        Args:
-            mu (torch.Tensor, optional): The latent space for :math:`\mu`. If
-                set to :obj:`None`, uses the last computation of :math:`\mu`.
-                (default: :obj:`None`)
-            logstd (torch.Tensor, optional): The latent space for
-                :math:`\log\sigma`.  If set to :obj:`None`, uses the last
-                computation of :math:`\log\sigma^2`. (default: :obj:`None`)
-        """
-        return -0.5 * torch.mean(
-            torch.sum(1 + 2 * logstd - mu**2 - logstd.exp() ** 2, dim=1)
-        )
+class EncoderDecoder:
+    def __init__(self,
+                 encoder: Encoder,
+                 discriminator: Discriminator):
+        self.encoder = encoder
+        self.discriminator = discriminator
+        self.model = ARGVA(encoder=self.encoder, discriminator=self.discriminator).to(DEVICE)
 
-    def loss(self, emb, pos_rw, discriminator):
-        discriminator_optimizer = torch.optim.Adam(discriminator.parameters(), lr=0.001)
+    def train(self, optimizer: torch.optim, data: Data):
+        self.model.train()
+        optimizer.encoder_loss.zero_grad()
+        emb = self.model.encode(data.x, data.edge_index, data.edge_attr)
         for _ in range(5):
-            discriminator_optimizer.zero_grad()
-            real = torch.sigmoid(discriminator(torch.randn_like(emb)))
-            fake = torch.sigmoid(discriminator(emb.detach()))
-            real_loss = -torch.log(real + EPS).mean()
-            fake_loss = -torch.log(1 - fake + EPS).mean()
-            discriminator_loss = real_loss + fake_loss
+            optimizer.decoder_loss.zero_grad()
+            discriminator_loss = self.model.discriminator_loss(emb)
             discriminator_loss.backward()
-            discriminator_optimizer.step()
-
-        loss = self.loss_pos_only(emb, pos_rw)
-        real = torch.sigmoid(discriminator(emb))
-        real_loss = -torch.log(real + EPS).mean()
-        loss += real_loss
+            optimizer.decoder_loss.step()
+        loss = self.model.recon_loss(emb, data.pos_edge_labels)
+        loss = loss + self.model.reg_loss(emb)
+        loss = loss + (1 / data.num_nodes) * self.model.kl_loss()
+        loss.backward()
+        optimizer.encoder_loss.step()
+        if not isinstance(loss, float):
+            return float(loss)
         return loss
 
+    @torch.no_grad()
+    def validate(self, data: Data):
+        self.model.eval()
+        emb = self.model.encode(data.x, data.edge_index, data.edge_attr)
+        return self.model.test(emb, data.pos_edge_labels, data.neg_edge_labels)
 
-class EncoderDecoder(Module):
-    def __init__(
-        self,
-        encode: Union[Net, Encoder],
-        decoder: Union[InnerProductDecoder, Discriminator],
-    ) -> None:
-        self.encoder = encode
-        self.decoder = decoder
+class EncoderInnerProduct:
+    def __init__(self,encoder: SUPREME):
+        self.encoder = encoder
+        self.model = GAE(encoder=self.encoder)
+
+    def train(self, optimizer: torch.optim, data: Data):
+        self.model.train()
+        optimizer.zero_grad()
+        emb, _ = self.model.encode(data)
+        loss = self.model.recon_loss(emb, data.pos_edge_labels)
+        loss.backward()
+        optimizer.step()
+        if not isinstance(loss, float):
+            return float(loss)
+        return loss
+
+    @torch.no_grad()
+    def validate(self, data: Data):
+        self.model.eval()
+        emb, _ = self.model.encode(data)
+        return self.model.test(emb, data.pos_edge_labels, data.neg_edge_labels)
+

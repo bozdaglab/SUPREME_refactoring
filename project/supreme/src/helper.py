@@ -1,14 +1,14 @@
-from typing import List
+from typing import List, Tuple
 
 import numpy as np
 import pandas as pd
 import torch
 import xgboost as xgb
 from boruta import BorutaPy
-
-# from sklearn.experimental import enable_iterative_imputer
+from sklearn.experimental import enable_iterative_imputer
 from sklearn.impute import IterativeImputer, KNNImputer
 from sklearn.tree import ExtraTreeRegressor
+from torch import Tensor
 
 
 def ratio(new_x: torch) -> List[int]:
@@ -27,6 +27,21 @@ def ratio(new_x: torch) -> List[int]:
     shape = new_x.shape[0]
     train_idx = round(shape * 0.75)
     return [train_idx, shape - train_idx]
+
+
+def random_split(new_x: Tensor) -> Tuple[Tensor, Tensor]:
+    """
+    Randomly split a dataset into non-overlapping new datasets of given lengths
+
+    Parameters:
+    -----------
+    new_x:
+         Concatenated features from different omics file
+
+    Return:
+        New datasets
+    """
+    return torch.utils.data.random_split(new_x, ratio(new_x))
 
 
 def masking_indexes(data, indexes):
@@ -55,3 +70,4 @@ def select_boruta(X: pd.DataFrame, y: pd.DataFrame) -> List[str]:
     features.fit(np.array(X), np.array(y))
     selected_features = features.support_
     return [X.columns[i] for i in range(len(selected_features)) if selected_features[i]]
+

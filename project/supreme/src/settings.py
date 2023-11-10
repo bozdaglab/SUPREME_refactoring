@@ -37,7 +37,7 @@ FEATURE_SELECTION_PER_NETWORK = [False, False, False]
 TOP_FEATURES_PER_NETWORK = [50, 50, 50]
 
 POS_NEG = True  # bool(os.environ.get("NODE2VEC"))
-ONLY_POS = False
+ONLY_POS = True
 DISCRIMINATOR = False
 NODE2VEC = True  # bool(os.environ.get("NODE2VEC"))
 MASKING = False  # bool(os.environ.get("MASKING"))
@@ -66,7 +66,7 @@ BORUTA_RUNS = 100
 BORUTA_TOP_FEATURES = 50
 EMBEDDING_DIM = 128
 WALK_LENGHT = 6
-CONTEXT_SIZE = 3
+CONTEXT_SIZE = 2
 WALK_PER_NODE = 3
 P = 1.0
 Q = 1.0
