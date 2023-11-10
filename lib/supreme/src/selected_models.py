@@ -172,86 +172,6 @@ class GCNUnsupervised:
         out_size = self.new_x.shape[-1]
         return criterion, out_size
 
-    def train(self, model, optimizer, data, criterion):
-        model.train()
-        if DISCRIMINATOR:
-            optimizer.encoder_loss.zero_grad()
-            emb = model.encode(data.x, data.edge_index, data.edge_attr)
-            for _ in range(5):
-                optimizer.decoder_loss.zero_grad()
-                discriminator_loss = model.discriminator_loss(emb)
-                discriminator_loss.backward()
-                optimizer.decoder_loss.step()
-            loss = model.recon_loss(emb, data.pos_edge_labels)
-            loss = loss + model.reg_loss(emb)
-            loss = loss + (1 / data.num_nodes) * model.kl_loss()
-            optimizer = optimizer.encoder_loss
-        else:
-            optimizer.zero_grad()
-            emb, out, prediction = model(data=data)
-            if POS_NEG:  # Done
-                """
-                https://arxiv.org/abs/1607.00653,
-                https://arxiv.org/abs/1611.0730,
-                https://arxiv.org/abs/1706.02216
-                """
-
-                loss = model.loss(
-                    emb, pos_rw=data.pos_edge_labels, neg_rw=data.neg_edge_labels
-                )
-            elif ONLY_POS:  # Done
-                loss = model.loss(emb=emb, pos_rw=data.pos_edge_labels)
-
-            else:
-                # encoder_decoder loss, criterion is MSE
-                loss = criterion(out[data.train_mask], data.x[data.train_mask])
-        loss.backward()
-        optimizer.step()
-
-        if not isinstance(loss, float):
-            return float(loss)
-
-        return loss
-
-    def loss_pos_only(self, emb, pos_rw, neg_rw: Optional[Tensor] = None):
-        pos_loss = -torch.log(
-            InnerProductDecoder(emb, pos_rw, sigmoid=True) + EPS
-        ).mean()
-        if neg_rw is None:
-            neg_rw = negative_sampling(pos_rw, emb.size(0))
-        neg_loss = -torch.log(
-            InnerProductDecoder(emb, neg_rw, sigmoid=True) + EPS
-        ).mean()
-
-        return pos_loss + neg_loss
-
-    def loss_discriminator(self, emb, pos_rw, discriminator):
-        discriminator_optimizer = torch.optim.Adam(discriminator.parameters(), lr=0.001)
-        for _ in range(5):
-            discriminator_optimizer.zero_grad()
-            real = torch.sigmoid(discriminator(torch.randn_like(emb)))
-            fake = torch.sigmoid(discriminator(emb.detach()))
-            real_loss = -torch.log(real + EPS).mean()
-            fake_loss = -torch.log(1 - fake + EPS).mean()
-            discriminator_loss = real_loss + fake_loss
-            discriminator_loss.backward()
-            discriminator_optimizer.step()
-
-        loss = self.loss_pos_only(emb, pos_rw)
-        real = torch.sigmoid(discriminator(emb))
-        real_loss = -torch.log(real + EPS).mean()
-        loss += real_loss
-        return loss
-
-    def validate(self, data, model, criterion):
-        # model = GAE(model)
-        model.eval()
-        with torch.no_grad():
-            z, emdb, _ = model(data=data)
-            loss = criterion(z[data.valid_mask], data.x[data.valid_mask])
-        return loss, emdb
-
-
 def make_data(new_x: Tensor, edge_index: pd.DataFrame) -> Data:
     """
     Generate a data object that holds node features, edge_index and edge_attr.
@@ -427,3 +347,5 @@ def select_model(in_size: int, hid_size: int, out_size: int) -> Union[SUPREME, E
             return EncoderDecoder(encoder=encoder, discriminator=discriminator)
         else:
             return SUPREME(in_size=in_size, hid_size=hid_size, out_size=out_size)
+            # encoder_decoder loss, criterion is MSE
+            # loss = criterion(out[data.train_mask], data.x[data.train_mask])

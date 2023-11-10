@@ -15,7 +15,9 @@ DEVICE = torch.device("cpu")
 MAX_LOGSTD = 10
 EPS = 1e-15
 
-
+# https://arxiv.org/abs/1607.00653,
+# https://arxiv.org/abs/1611.0730,
+# https://arxiv.org/abs/1706.02216
 class SUPREME(Module):
     """
     Training SUPREME model
@@ -106,3 +108,13 @@ class EncoderInnerProduct:
         if not isinstance(loss, float):
             return float(loss)
         return loss
+
+
+
+    # def validate(self, data, model, criterion):
+    #     # model = GAE(model)
+    #     model.eval()
+    #     with torch.no_grad():
+    #         z, emdb, _ = model(data=data)
+    #         loss = criterion(z[data.valid_mask], data.x[data.valid_mask])
+    #     return loss, emdb
