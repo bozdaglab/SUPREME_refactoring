@@ -1,19 +1,23 @@
-from typing import Optional, Union
-
 import torch
 import torch.nn.functional as F
 from dotenv import find_dotenv, load_dotenv
-from settings import HIDDEN_SIZE, INPUT_SIZE, OUT_SIZE
-from torch import Tensor
+from learning_types import LearningTypes
+from settings import LEARNING
 from torch.nn import Linear, Module
-from torch_geometric.nn import GCNConv, ARGVA, GAE
 from torch_geometric.data import Data
+from torch_geometric.nn import ARGVA, GAE, GCNConv
 
 load_dotenv(find_dotenv())
 
 DEVICE = torch.device("cpu")
 MAX_LOGSTD = 10
 EPS = 1e-15
+
+if LEARNING == LearningTypes.regression.name:
+    CRITERION = torch.nn.MSELoss()
+elif LEARNING == LearningTypes.classification.name:
+    CRITERION = torch.nn.CrossEntropyLoss()
+
 
 # https://arxiv.org/abs/1607.00653,
 # https://arxiv.org/abs/1611.0730,
@@ -28,7 +32,7 @@ class SUPREME(Module):
         self.conv1 = GCNConv(in_size, hid_size)
         self.conv2 = GCNConv(hid_size, out_size)
 
-    def forward(self, data):
+    def forward(self, data: Data):
         x, edge_index, edge_weight = data.x, data.edge_index, data.edge_attr
         x_emb = self.conv1(x, edge_index, edge_weight)
         x = F.relu(x_emb)
@@ -36,15 +40,26 @@ class SUPREME(Module):
         x = self.conv2(x, edge_index, edge_weight)
         return x, x_emb
 
-    def train(self, data: Data):
-        self.model.train()
-        
+    def train(self, optimizer: torch.optim, data: Data):
+        self.train()
+        optimizer.zero_grad()
+        emb, _ = self(data)
+        loss = CRITERION(emb[data.train_mask], data.y[data.train_mask])
+        loss.backward()
+        optimizer.step()
+        return loss
+
     @torch.no_grad()
-    def validate():
-        pass
+    def validate(self, data: Data):
+        self.eval()
+        emb, _ = self(data)
+        # pred = emb.argmax(dim=1)
+        loss = CRITERION(emb[data.valid_mask], data.y[data.valid_mask])
+        return loss
+
 
 class Encoder(torch.nn.Module):
-    def __init__(self, in_size=INPUT_SIZE, hid_size=HIDDEN_SIZE, out_size=OUT_SIZE):
+    def __init__(self, in_size: int, hid_size: int, out_size: int):
         super().__init__()
         self.conv1 = GCNConv(in_size, hid_size)
         self.conv2 = GCNConv(hid_size, hid_size)
@@ -73,12 +88,12 @@ class Discriminator(Module):
 
 
 class EncoderDecoder:
-    def __init__(self,
-                 encoder: Encoder,
-                 discriminator: Discriminator):
+    def __init__(self, encoder: Encoder, discriminator: Discriminator):
         self.encoder = encoder
         self.discriminator = discriminator
-        self.model = ARGVA(encoder=self.encoder, discriminator=self.discriminator).to(DEVICE)
+        self.model = ARGVA(encoder=self.encoder, discriminator=self.discriminator).to(
+            DEVICE
+        )
 
     def train(self, optimizer: torch.optim, data: Data):
         self.model.train()
@@ -104,8 +119,9 @@ class EncoderDecoder:
         emb = self.model.encode(data.x, data.edge_index, data.edge_attr)
         return self.model.test(emb, data.pos_edge_labels, data.neg_edge_labels)
 
+
 class EncoderInnerProduct:
-    def __init__(self,encoder: SUPREME):
+    def __init__(self, encoder: SUPREME):
         self.encoder = encoder
         self.model = GAE(encoder=self.encoder)
 
@@ -125,4 +141,3 @@ class EncoderInnerProduct:
         self.model.eval()
         emb, _ = self.model.encode(data)
         return self.model.test(emb, data.pos_edge_labels, data.neg_edge_labels)
-

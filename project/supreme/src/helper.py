@@ -5,7 +5,8 @@ import pandas as pd
 import torch
 import xgboost as xgb
 from boruta import BorutaPy
-from sklearn.experimental import enable_iterative_imputer
+
+# from sklearn.experimental import enable_iterative_imputer
 from sklearn.impute import IterativeImputer, KNNImputer
 from sklearn.tree import ExtraTreeRegressor
 from torch import Tensor
@@ -70,4 +71,3 @@ def select_boruta(X: pd.DataFrame, y: pd.DataFrame) -> List[str]:
     features.fit(np.array(X), np.array(y))
     selected_features = features.support_
     return [X.columns[i] for i in range(len(selected_features)) if selected_features[i]]
-
