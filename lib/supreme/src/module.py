@@ -2,7 +2,7 @@ import torch
 import torch.nn.functional as F
 from dotenv import find_dotenv, load_dotenv
 from learning_types import LearningTypes
-from settings import LEARNING
+from settings import LEARNING, LINKPREDICTION
 from torch.nn import Linear, Module
 from torch_geometric.data import Data
 from torch_geometric.nn import ARGVA, GAE, GCNConv
@@ -17,11 +17,14 @@ if LEARNING == LearningTypes.regression.name:
     CRITERION = torch.nn.MSELoss()
 elif LEARNING == LearningTypes.classification.name:
     CRITERION = torch.nn.CrossEntropyLoss()
-
+elif LEARNING == LearningTypes.clustering.name:
+    CRITERION = torch.nn.BCEWithLogitsLoss()
 
 # https://arxiv.org/abs/1607.00653,
 # https://arxiv.org/abs/1611.0730,
 # https://arxiv.org/abs/1706.02216
+
+
 class SUPREME(Module):
     """
     Training SUPREME model
@@ -39,23 +42,6 @@ class SUPREME(Module):
         x = F.dropout(x, training=self.training)
         x = self.conv2(x, edge_index, edge_weight)
         return x, x_emb
-
-    def train(self, optimizer: torch.optim, data: Data):
-        self.train()
-        optimizer.zero_grad()
-        emb, _ = self(data)
-        loss = CRITERION(emb[data.train_mask], data.y[data.train_mask])
-        loss.backward()
-        optimizer.step()
-        return loss
-
-    @torch.no_grad()
-    def validate(self, data: Data):
-        self.eval()
-        emb, _ = self(data)
-        # pred = emb.argmax(dim=1)
-        loss = CRITERION(emb[data.valid_mask], data.y[data.valid_mask])
-        return loss
 
 
 class Encoder(torch.nn.Module):
@@ -85,6 +71,80 @@ class Discriminator(Module):
         x = self.lin1(x).relu()
         x = self.lin2(x).relu()
         return self.lin3(x)
+
+
+class SupremeClassification:
+    def __init__(self, model: SUPREME) -> None:
+        self.model = model
+
+    def train(self, optimizer: torch.optim, data: Data):
+        self.model.train()
+        optimizer.zero_grad()
+        emb, _ = self.model(data)
+        loss = CRITERION(emb[data.train_mask], data.y[data.train_mask])
+        loss.backward()
+        optimizer.step()
+        return loss
+
+    @torch.no_grad()
+    def validate(self, data: Data):
+        self.model.eval()
+        emb, _ = self.model(data)
+        loss = CRITERION(emb[data.valid_mask], data.y[data.valid_mask])
+        return loss
+
+
+class SupremeClusteringLink:
+    def __init__(self, model: SUPREME) -> None:
+        self.model = model
+
+    def train(self, optimizer: torch.optim, data: Data):
+        if LINKPREDICTION:
+            return self.train_link_prediction(optimizer, data)
+        else:
+            return self.train_posneg(optimizer, data)
+
+    def train_link_prediction(self, optimizer: torch.optim, data: Data):
+        self.model.train()
+        optimizer.zero_grad()
+        emb = self.model(data)
+        h_src = emb[data.edge_label_index[0]]
+        h_dst = emb[data.edge_label_index[1]]
+        link_pred = (h_src * h_dst).sum(dim=-1)
+        loss = CRITERION(link_pred, data.edge_index)
+        loss.backward()
+        optimizer.step()
+        return loss
+
+    def train_posneg(self, optimizer: torch.optim, data: Data):
+        self.model.train()
+        optimizer.zero_grad()
+        emb, _ = self.model(data)
+
+        # Positive loss.
+        pos_rw = data.pos_edge_labels
+        start, rest = pos_rw[:, 0], pos_rw[:, 1:].contiguous()
+        out = self.compute(emb, start, rest, pos_rw)
+        pos_loss = -torch.log(torch.sigmoid(out) + EPS).mean()
+
+        # Negative loss.
+        neg_rw = data.neg_edge_labels
+        start, rest = neg_rw[:, 0], neg_rw[:, 1:].contiguous()
+        out = self.compute(emb, start, rest, pos_rw)
+        neg_loss = -torch.log(1 - torch.sigmoid(out) + EPS).mean()
+        return pos_loss + neg_loss
+
+    def compute(self, emb, start, rest, rw):
+        h_start = emb[start].view(rw.size(0), 1, emb.size(1))
+        h_rest = emb[rest.view(-1)].view(rw.size(0), -1, emb.size(1))
+        return (h_start * h_rest).sum(dim=-1).view(-1)
+
+    @torch.no_grad()
+    def validation(self, data):
+        self.model.eval()
+        emb, _ = self.mdoel(data)
+        # encoder_decoder loss, criterion is MSE
+        # loss = criterion(out[data.train_mask], data.x[data.train_mask])
 
 
 class EncoderDecoder:

@@ -6,12 +6,21 @@ import pandas as pd
 import torch
 from helper import masking_indexes, random_split
 from learning_types import LearningTypes, OptimizerType
-from module import SUPREME, Discriminator, Encoder, EncoderDecoder, EncoderInnerProduct
+from module import (
+    SUPREME,
+    Discriminator,
+    Encoder,
+    EncoderDecoder,
+    EncoderInnerProduct,
+    SupremeClassification,
+    SupremeClusteringLink,
+)
 from settings import (
     CONTEXT_SIZE,
     DISCRIMINATOR,
     EMBEDDING_DIM,
     LEARNING,
+    LINKPREDICTION,
     MASKING,
     NODE2VEC,
     ONLY_POS,
@@ -121,13 +130,14 @@ class GCNUnsupervised:
             num_nodes = maybe_num_nodes(data.edge_index)
             mask_edges = torch.rand(edge_index.size(1)) < 0.5
             non_mask_edges = ~mask_edges
-            data.neg_edge_labels = data.edge_index.clone()
-            data.neg_edge_labels[0:mask_edges] = torch.randint(
+            neg_edge_labels = data.edge_index.clone()
+            neg_edge_labels[0:mask_edges] = torch.randint(
                 num_nodes, (mask_edges.sum(),), device=DEVICE
             )
-            data.neg_edge_labels[0:non_mask_edges] = torch.randint(
+            neg_edge_labels[0:non_mask_edges] = torch.randint(
                 num_nodes, (non_mask_edges.sum(),), device=DEVICE
             )
+            data.neg_edge_labels = neg_edge_labels
         return train_test_valid(
             data=data, train_valid_idx=train_valid_idx, test_idx=test_idx
         )
@@ -287,7 +297,7 @@ def select_optimizer(
 
 def select_model(
     in_size: int, hid_size: int, out_size: int
-) -> Union[SUPREME, EncoderDecoder, EncoderInnerProduct]:
+) -> Union[SupremeClassification, EncoderDecoder, EncoderInnerProduct]:
     """
     This function selects the return of the model
 
@@ -304,7 +314,8 @@ def select_model(
         Models, whether original SUPREME, or encoder-decoder model
     """
     if LEARNING in [LearningTypes.classification.name, LearningTypes.regression.name]:
-        return SUPREME(in_size=in_size, hid_size=hid_size, out_size=out_size)
+        model = SUPREME(in_size=in_size, hid_size=hid_size, out_size=out_size)
+        return SupremeClassification(model=model)
     else:
         if ONLY_POS:
             encoder = SUPREME(in_size=in_size, hid_size=hid_size, out_size=out_size)
@@ -315,7 +326,6 @@ def select_model(
                 in_size=in_size, hid_size=hid_size, out_size=out_size
             )
             return EncoderDecoder(encoder=encoder, discriminator=discriminator)
-        else:
-            return SUPREME(in_size=in_size, hid_size=hid_size, out_size=out_size)
-            # encoder_decoder loss, criterion is MSE
-            # loss = criterion(out[data.train_mask], data.x[data.train_mask])
+        elif LINKPREDICTION:
+            model = SUPREME(in_size=in_size, hid_size=hid_size, out_size=out_size)
+            return SupremeClusteringLink(model=model)

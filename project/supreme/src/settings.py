@@ -41,6 +41,7 @@ ONLY_POS = True
 DISCRIMINATOR = False
 NODE2VEC = True  # bool(os.environ.get("NODE2VEC"))
 MASKING = False  # bool(os.environ.get("MASKING"))
+LINKPREDICTION = False
 
 UNNAMED = "Unnamed: 0"
 LOGGING_LEVEL = os.environ.get("LOGGING_LEVEL")

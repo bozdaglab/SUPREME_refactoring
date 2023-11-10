@@ -51,7 +51,7 @@ def masking_indexes(data, indexes):
 
 def load_missing_method(imputer_name):
     if imputer_name == "KNNImputer":
-        return KNNImputer(n_neighbors=2)  # , keep_empty_features=True)
+        return KNNImputer(n_neighbors=2)
     elif imputer_name == "IterativeImputer":
         return IterativeImputer(
             max_iter=2, estimator=ExtraTreeRegressor(), keep_empty_features=True
