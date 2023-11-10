@@ -6,7 +6,7 @@ import pandas as pd
 import torch
 from helper import masking_indexes, random_split
 from learning_types import LearningTypes, OptimizerType
-from module import (  # , EncoderDecoder, InnerProductDecoder
+from module import (
     SUPREME,
     Discriminator,
     Encoder,
@@ -26,11 +26,12 @@ from settings import (
     P,
     Q,
 )
+from module import EncoderDecoder, EncoderInnerProduct
 from sklearn.model_selection import RepeatedStratifiedKFold, train_test_split
 from torch import Tensor
 from torch.nn import CrossEntropyLoss, Module, MSELoss
 from torch_geometric.data import Data
-from torch_geometric.nn import ARGVA, GAE, Node2Vec
+from torch_geometric.nn import Node2Vec
 from torch_geometric.utils.negative_sampling import negative_sampling
 from torch_geometric.utils.num_nodes import maybe_num_nodes
 
@@ -172,19 +173,20 @@ class GCNUnsupervised:
         return criterion, out_size
 
     def train(self, model, optimizer, data, criterion):
+        model.train()
         if DISCRIMINATOR:
-            num_nodes = maybe_num_nodes(data.edge_index)
-            # model = EncoderDecoder(encoder = Encoder(), decoder= Discriminator())
-            # encoder = Encoder()
-            # discriminator = Discriminator()
-            mu, logstd = model.encoder(data, data.edge_index)
-            emb = mu + torch.randn_like(logstd) * torch.exp(logstd)
-            loss = self.loss_discriminator(
-                emb=emb, data=data.pos_edge_labels, discriminator=model.decoder
-            )
-            loss += (1 / num_nodes) * model.decoder.kl_loss(mu, logstd)
+            optimizer.encoder_loss.zero_grad()
+            emb = model.encode(data.x, data.edge_index, data.edge_attr)
+            for _ in range(5):
+                optimizer.decoder_loss.zero_grad()
+                discriminator_loss = model.discriminator_loss(emb)
+                discriminator_loss.backward()
+                optimizer.decoder_loss.step()
+            loss = model.recon_loss(emb, data.pos_edge_labels)
+            loss = loss + model.reg_loss(emb)
+            loss = loss + (1 / data.num_nodes) * model.kl_loss()
+            optimizer = optimizer.encoder_loss
         else:
-            model.train()
             optimizer.zero_grad()
             emb, out, prediction = model(data=data)
             if POS_NEG:  # Done
@@ -373,18 +375,16 @@ def select_optimizer(
     Return:
         Torch optimizer
     """
-    if isinstance(model, ARGVA):
+    if isinstance(model, EncoderDecoder):
         losses = namedtuple("losses", ["encoder_loss", "decoder_loss"])
         encoder_loss = torch.optim.Adam(model.encoder.parameters(), lr=learning_rate)
-        try:
-            decoder_loss = torch.optim.Adam(
-                model.decoder.parameters(), lr=learning_rate
-            )
-        except ValueError:
-            decoder_loss = torch.optim.Adam(
-                model.discriminator.parameters(), lr=learning_rate
-            )
+        decoder_loss = torch.optim.Adam(
+            model.discriminator.parameters(), lr=learning_rate
+        )
         return losses(encoder_loss=encoder_loss, decoder_loss=decoder_loss)
+    elif isinstance(model, EncoderInnerProduct):
+        return torch.optim.Adam(model.encoder.parameters(), lr=learning_rate)
+    
     if optimizer_type == OptimizerType.sgd.name:
         return torch.optim.SGD(
             model.parameters(), lr=learning_rate, weight_decay=0.001, momentum=0.9
@@ -397,18 +397,33 @@ def select_optimizer(
         raise NotImplementedError
 
 
-def select_model(in_size: int, hid_size: int, out_size: int):
+def select_model(in_size: int, hid_size: int, out_size: int) -> Union[SUPREME, EncoderDecoder, EncoderInnerProduct]:
+    """
+    This function selects the return of the model 
+
+    Parameters:
+    ----------
+    in_size:
+        Input size of the model
+    hid_size:
+        hidden size
+    out_size:
+        output size of the model
+
+    Return:
+        Models, whether original SUPREME, or encoder-decoder model
+    """
     if LEARNING in [LearningTypes.classification.name, LearningTypes.regression.name]:
         return SUPREME(in_size=in_size, hid_size=hid_size, out_size=out_size)
     else:
         if ONLY_POS:
             encoder = SUPREME(in_size=in_size, hid_size=hid_size, out_size=out_size)
-            return GAE(encoder=encoder)
+            return EncoderInnerProduct(encoder=encoder)
         elif DISCRIMINATOR:
             encoder = Encoder(in_size=in_size, hid_size=hid_size, out_size=out_size)
             discriminator = Discriminator(
                 in_size=in_size, hid_size=hid_size, out_size=out_size
             )
-            return ARGVA(encoder=encoder, discriminator=discriminator).to(DEVICE)
+            return EncoderDecoder(encoder=encoder, discriminator=discriminator)
         else:
             return SUPREME(in_size=in_size, hid_size=hid_size, out_size=out_size)

@@ -104,23 +104,7 @@ def node_embedding_generation(
                 min_valid_loss = np.Inf
                 patience_count = 0
                 for epoch in range(MAX_EPOCHS):
-                    # emb = model.encode(
-                    #     model=model, optimizer=optimizer, data=data, criterion=criterion
-                    # )
-                    model.train()
-                    optimizer.encoder_loss.zero_grad()
-                    emb = model.encode(data.x, data.edge_index, data.edge_attr)
-                    for i in range(5):
-                        optimizer.decoder_loss.zero_grad()
-                        discriminator_loss = model.discriminator_loss(emb)
-                        discriminator_loss.backward()
-                        optimizer.decoder_loss.step()
-                    loss = model.recon_loss(emb, data.pos_edge_labels)
-                    loss = loss + model.reg_loss(emb)
-                    loss = loss + (1 / data.num_nodes) * model.kl_loss()
-                    loss.backward()
-                    optimizer.encoder_loss.step()
-
+                    model.train(optimizer, data, criterion)
                     this_valid_loss, emb = learning_model.validate(
                         model=model, criterion=criterion, data=data
                     )

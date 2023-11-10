@@ -37,8 +37,8 @@ FEATURE_SELECTION_PER_NETWORK = [False, False, False]
 TOP_FEATURES_PER_NETWORK = [50, 50, 50]
 
 POS_NEG = True  # bool(os.environ.get("NODE2VEC"))
-ONLY_POS = False
-DISCRIMINATOR = True
+ONLY_POS = True
+DISCRIMINATOR = False
 NODE2VEC = True  # bool(os.environ.get("NODE2VEC"))
 MASKING = False  # bool(os.environ.get("MASKING"))
 
