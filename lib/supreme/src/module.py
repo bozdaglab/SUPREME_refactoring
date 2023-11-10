@@ -7,7 +7,7 @@ from settings import HIDDEN_SIZE, INPUT_SIZE, OUT_SIZE
 from torch import Tensor
 from torch.nn import Linear, Module
 from torch_geometric.nn import GCNConv, ARGVA, GAE
-
+from torch_geometric.data import Data
 
 load_dotenv(find_dotenv())
 
@@ -36,6 +36,12 @@ class SUPREME(Module):
         x = self.conv2(x, edge_index, edge_weight)
         return x, x_emb
 
+    def train(self, data: Data):
+        self.model.train()
+        
+    @torch.no_grad()
+    def validate():
+        pass
 
 class Encoder(torch.nn.Module):
     def __init__(self, in_size=INPUT_SIZE, hid_size=HIDDEN_SIZE, out_size=OUT_SIZE):
@@ -74,7 +80,7 @@ class EncoderDecoder:
         self.discriminator = discriminator
         self.model = ARGVA(encoder=self.encoder, discriminator=self.discriminator).to(DEVICE)
 
-    def train(self, optimizer, data):
+    def train(self, optimizer: torch.optim, data: Data):
         self.model.train()
         optimizer.encoder_loss.zero_grad()
         emb = self.model.encode(data.x, data.edge_index, data.edge_attr)
@@ -92,13 +98,18 @@ class EncoderDecoder:
             return float(loss)
         return loss
 
+    @torch.no_grad()
+    def validate(self, data: Data):
+        self.model.eval()
+        emb = self.model.encode(data.x, data.edge_index, data.edge_attr)
+        return self.model.test(emb, data.pos_edge_labels, data.neg_edge_labels)
 
 class EncoderInnerProduct:
     def __init__(self,encoder: SUPREME):
         self.encoder = encoder
         self.model = GAE(encoder=self.encoder)
 
-    def train(self, optimizer, data):
+    def train(self, optimizer: torch.optim, data: Data):
         self.model.train()
         optimizer.zero_grad()
         emb, _ = self.model.encode(data)
@@ -109,12 +120,9 @@ class EncoderInnerProduct:
             return float(loss)
         return loss
 
+    @torch.no_grad()
+    def validate(self, data: Data):
+        self.model.eval()
+        emb, _ = self.model.encode(data)
+        return self.model.test(emb, data.pos_edge_labels, data.neg_edge_labels)
 
-
-    # def validate(self, data, model, criterion):
-    #     # model = GAE(model)
-    #     model.eval()
-    #     with torch.no_grad():
-    #         z, emdb, _ = model(data=data)
-    #         loss = criterion(z[data.valid_mask], data.x[data.valid_mask])
-    #     return loss, emdb
