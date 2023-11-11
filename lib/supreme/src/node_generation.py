@@ -19,6 +19,7 @@ from settings import (
     MAX_EPOCHS,
     MIN_EPOCHS,
     OPTIM,
+    OPTIONAL_FEATURE_SELECTION,
     PATIENCE,
     UNNAMED,
     X_TIME2,
@@ -52,7 +53,7 @@ def node_feature_generation(labels: Optional[pd.DataFrame]) -> Tensor:
         ):  # any does not make sense. We need it seperate for each dataset
             values = feat.values
         else:
-            topx = select_boruta(feat, labels)
+            topx = select_boruta(X=feat, y=labels)
             topx = np.array(topx)
             values = torch.tensor(topx.T, device=DEVICE)
         if is_first:
@@ -95,7 +96,7 @@ def node_embedding_generation(
             av_valid_losses = []
             for _ in range(X_TIME2):
                 data = learning_model.prepare_data(edge_index=edge_index)
-                criterion, out_size = learning_model.model_loss_output()
+                out_size = learning_model.model_loss_output()
                 in_size = data.x.shape[1]
                 model = select_model(
                     in_size=in_size, hid_size=hid_size, out_size=out_size
@@ -105,9 +106,7 @@ def node_embedding_generation(
                 patience_count = 0
                 for epoch in range(MAX_EPOCHS):
                     model.train(optimizer, data)
-                    this_valid_loss, emb = model.validate(
-                        model=model, criterion=criterion, data=data
-                    )
+                    this_valid_loss, emb = model.validate(data=data)
                     if this_valid_loss < min_valid_loss:
                         min_valid_loss = this_valid_loss
                         patience_count = 0
@@ -126,3 +125,38 @@ def node_embedding_generation(
 
         embedding_path = f"{EMBEDDINGS}/{LEARNING}/{edge_file.split('.csv')[0]}"
         pd.DataFrame(selected_emb).to_csv(f"{embedding_path}.csv", index=False)
+
+
+def add_row_features(emb: Tensor, is_first: bool = True) -> Tensor:
+    """
+    This function adds row features and performs feature selection
+    on the row features and concat it to the embeddings
+
+    Parameters:
+    -----------
+
+    emb:
+        Embeddings of the trial(s)
+    is_first:
+        True, features from the first file, False, features other files
+
+    Return:
+        Concatenation of row features and embeddings
+    """
+    for addFeatures in os.listdir(EMBEDDINGS / LEARNING):
+        features = pd.read_csv(f"{EMBEDDINGS}/{LEARNING}/{addFeatures}")
+
+        if is_first:
+            allx = torch.tensor(features.values, device=DEVICE).float()
+            is_first = False
+        else:
+            allx = torch.cat(
+                (allx, torch.tensor(features.values, device=DEVICE).float()), dim=1
+            )
+
+    if OPTIONAL_FEATURE_SELECTION is True:
+        pass
+    else:
+        emb = torch.cat((emb, allx), dim=1)
+
+    return emb

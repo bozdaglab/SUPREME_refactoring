@@ -288,7 +288,7 @@ def select_optimizer(
             model.parameters(), lr=learning_rate, weight_decay=0.001, momentum=0.9
         )
     elif optimizer_type == OptimizerType.adam.name:
-        return torch.optim.Adam(model.parameters(), lr=learning_rate)
+        return torch.optim.Adam(model.model.parameters(), lr=learning_rate)
     elif optimizer_type == OptimizerType.sparse_adam.name:
         return torch.optim.SparseAdam(list(model.parameters()), lr=learning_rate)
     else:

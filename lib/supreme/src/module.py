@@ -44,7 +44,7 @@ class SUPREME(Module):
         return x, x_emb
 
 
-class Encoder(torch.nn.Module):
+class Encoder(Module):
     def __init__(self, in_size: int, hid_size: int, out_size: int):
         super().__init__()
         self.conv1 = GCNConv(in_size, hid_size)
@@ -52,7 +52,8 @@ class Encoder(torch.nn.Module):
         self.conv_mu = GCNConv(hid_size, out_size)
         self.conv_logstd = GCNConv(hid_size, out_size)
 
-    def forward(self, x, edge_index, edge_weight):
+    def forward(self, data: Data):
+        x, edge_index, edge_weight = data.x, data.edge_index, data.edge_attr
         x_emb = self.conv1(x, edge_index, edge_weight)
         x = F.relu(x_emb)
         x = F.dropout(x, training=self.training)
@@ -91,7 +92,7 @@ class SupremeClassification:
         self.model.eval()
         emb, _ = self.model(data)
         loss = CRITERION(emb[data.valid_mask], data.y[data.valid_mask])
-        return loss
+        return loss, emb
 
 
 class SupremeClusteringLink:
@@ -141,7 +142,7 @@ class SupremeClusteringLink:
         return (h_start * h_rest).sum(dim=-1).view(-1)
 
     @torch.no_grad()
-    def validation(self, data):
+    def validation(self, data: Data):
         self.model.eval()
         emb, _ = self.mdoel(data)
         # encoder_decoder loss, criterion is MSE
@@ -159,7 +160,7 @@ class EncoderDecoder:
     def train(self, optimizer: torch.optim, data: Data):
         self.model.train()
         optimizer.encoder_loss.zero_grad()
-        emb = self.model.encode(data.x, data.edge_index, data.edge_attr)
+        emb = self.model.encode(data)
         for _ in range(5):
             optimizer.decoder_loss.zero_grad()
             discriminator_loss = self.model.discriminator_loss(emb)
@@ -178,7 +179,7 @@ class EncoderDecoder:
     def validate(self, data: Data):
         self.model.eval()
         emb = self.model.encode(data.x, data.edge_index, data.edge_attr)
-        return self.model.test(emb, data.pos_edge_labels, data.neg_edge_labels)
+        return self.model.test(emb, data.pos_edge_labels, data.neg_edge_labels), emb
 
 
 class EncoderInnerProduct:
@@ -201,4 +202,4 @@ class EncoderInnerProduct:
     def validate(self, data: Data):
         self.model.eval()
         emb, _ = self.model.encode(data)
-        return self.model.test(emb, data.pos_edge_labels, data.neg_edge_labels)
+        return self.model.test(emb, data.pos_edge_labels, data.neg_edge_labels), emb
