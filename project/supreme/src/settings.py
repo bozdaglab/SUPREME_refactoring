@@ -18,6 +18,7 @@ BASE_DATAPATH = Path(__file__).parent.parent.parent.parent / "data" / "sample_da
 EMBEDDINGS = BASE_DATAPATH / "embeddings"
 EDGES = BASE_DATAPATH / "edges"
 DATA = BASE_DATAPATH / "data"
+SIMILARITY = BASE_DATAPATH / "similarity"
 LABELS = BASE_DATAPATH / "labels"
 IMPUTER_NAME_SUBSET = os.environ.get("IMPUTER_NAME_SUBSET")
 IMPUTER_NAME_WHOLE = os.environ.get("IMPUTER_NAME_WHOLE")

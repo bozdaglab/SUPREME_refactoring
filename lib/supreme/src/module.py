@@ -105,6 +105,7 @@ class SupremeClusteringLink:
             return self.train_posneg(optimizer, data)
 
     def train_link_prediction(self, optimizer: torch.optim, data: Data):
+        # GraphSAGE
         self.model.train()
         optimizer.zero_grad()
         emb = self.model(data)
@@ -132,7 +133,7 @@ class SupremeClusteringLink:
         start, rest = neg_rw[:, 0], neg_rw[:, 1:].contiguous()
         out = self.compute(emb, start, rest, pos_rw)
         neg_loss = -torch.log(1 - torch.sigmoid(out) + EPS).mean()
-        return pos_loss + neg_loss
+        return pos_loss + neg_loss  # maybe get the average loss
 
     def compute(self, emb, start, rest, rw):
         h_start = emb[start].view(rw.size(0), 1, emb.size(1))

@@ -9,7 +9,7 @@ from typing import List
 import pandas as pd
 import torch
 from dotenv import find_dotenv, load_dotenv
-from helper import ratio
+from helper import ratio, similarity
 from node_generation import node_embedding_generation, node_feature_generation
 from set_logging import set_log_config
 from settings import (
@@ -75,6 +75,7 @@ for file in os.listdir(LABELS):
 
 start = time.time()
 pickle_to_csv()
+similarity()
 logger.info("SUPREME is running..")
 new_x = node_feature_generation(labels=labels)
 train_valid_idx, test_idx = torch.utils.data.random_split(new_x, ratio(new_x=new_x))

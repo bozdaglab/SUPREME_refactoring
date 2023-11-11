@@ -1,3 +1,5 @@
+import os
+from collections import defaultdict
 from typing import List, Tuple
 
 import numpy as np
@@ -5,6 +7,8 @@ import pandas as pd
 import torch
 import xgboost as xgb
 from boruta import BorutaPy
+from scipy.stats import pearsonr, spearmanr
+from settings import DATA, SIMILARITY
 
 # from sklearn.experimental import enable_iterative_imputer
 from sklearn.impute import IterativeImputer, KNNImputer
@@ -71,3 +75,36 @@ def select_boruta(X: pd.DataFrame, y: pd.DataFrame) -> List[str]:
     features.fit(np.array(X), np.array(y))
     selected_features = features.support_
     return [X.columns[i] for i in range(len(selected_features)) if selected_features[i]]
+
+
+def get_stat_methos(stat_method: str):
+    factory = {"spearman": spearmanr, "pearson": pearsonr}
+    try:
+        return factory[stat_method]
+    except KeyError:
+        raise KeyError("Please check your stat model")
+
+
+def similarity():
+    if os.path.exists(SIMILARITY):
+        return
+    os.mkdir(SIMILARITY)
+    stat_method = "pearson"
+    for file in os.listdir(DATA):
+        correlation_dictionary = defaultdict()
+        data = pd.read_csv(DATA / file)
+        # data = data.dropna(inplace=True)
+        stat_model = get_stat_methos(stat_method)
+        for ind_i, patient_1 in data.iterrows():
+            for ind_j, patient_2 in data[ind_i + 1 :].iterrows():
+                correlation_dictionary[f"{ind_i}_{ind_j}"] = {
+                    "Patient_1": ind_i,
+                    "Patient_2": ind_j,
+                    "Similarity Score": stat_model(
+                        patient_1.values, patient_2.values
+                    ).statistic,
+                }
+        pd.DataFrame(
+            correlation_dictionary.values(),
+            columns=["Patient_1", "Patient_2", "Similarity Score"],
+        ).to_csv(SIMILARITY / f"similarity_{file}")
