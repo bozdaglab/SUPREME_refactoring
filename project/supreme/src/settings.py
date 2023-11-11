@@ -28,8 +28,9 @@ FEATURE_NETWORKS_INTEGRATION = [
 ]
 FEATURE_TO_DROP = ["Med_ID", "Visit_ID", "CDR_Sum"]
 NODE_NETWORKS = FEATURE_NETWORKS_INTEGRATION.copy()
-LEARNING = "clustering"
+LEARNING = "classification"
 OPTIM = "adam"
+STAT_METHOD = "pearson"
 LEARNING_RATE = [0.01]
 HIDDEN_SIZE = [32]
 X_TIME = 50
@@ -41,6 +42,7 @@ ONLY_POS = True
 DISCRIMINATOR = False
 NODE2VEC = True  # bool(os.environ.get("NODE2VEC"))
 MASKING = False  # bool(os.environ.get("MASKING"))
+LINKPREDICTION = False
 
 UNNAMED = "Unnamed: 0"
 LOGGING_LEVEL = os.environ.get("LOGGING_LEVEL")

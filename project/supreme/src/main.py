@@ -7,23 +7,12 @@ from itertools import combinations
 from typing import List
 
 import pandas as pd
-import torch
 from dotenv import find_dotenv, load_dotenv
-from helper import ratio
+from helper import random_split, similarity_matrix_generation
 from node_generation import node_embedding_generation, node_feature_generation
 from set_logging import set_log_config
-from settings import (
-    BASE_DATAPATH,
-    DATA,
-    EDGES,
-    EMBEDDINGS,
-    HIDDEN_SIZE,
-    LABELS,
-    LEARNING,
-    LEARNING_RATE,
-    UNNAMED,
-)
-from train_mls import ml
+from settings import BASE_DATAPATH, DATA, EDGES, EMBEDDINGS, LABELS, LEARNING, UNNAMED
+from train_mls import train_ml_model
 
 load_dotenv(find_dotenv())
 set_log_config()
@@ -67,50 +56,41 @@ def pickle_to_csv():
 
 labels = None
 for file in os.listdir(LABELS):
-    if file:
-        labels = pd.read_csv(f"{LABELS}/{file}")
-        if UNNAMED in labels:
-            labels = labels.drop(UNNAMED, axis=1)
+    if not file:
+        break
+    labels = pd.read_csv(f"{LABELS}/{file}")
+    if UNNAMED in labels:
+        labels = labels.drop(UNNAMED, axis=1)
 
 
 start = time.time()
 pickle_to_csv()
+similarity_matrix_generation()
 logger.info("SUPREME is running..")
 new_x = node_feature_generation(labels=labels)
-train_valid_idx, test_idx = torch.utils.data.random_split(new_x, ratio(new_x=new_x))
+train_valid_idx, test_idx = random_split(new_x)
 node_embedding_generation(new_x=new_x, labels=labels)
 start2 = time.time()
 
 logger.info(
-    f"It took {str(round(start2 - start, 1))}"
-    f"seconds for node embedding generation "
-    f"({str(len(LEARNING_RATE) * len(HIDDEN_SIZE))}"
-    f"trials for {str(len(os.listdir(EMBEDDINGS)))} seperate GCNs)."
+    f"It took {str(round(start2 - start, 1))} seconds for node embedding generation"
 )
-
 logger.info("SUPREME is integrating the embeddings..")
 
 trial_combs = combine_trails()
 
 for trials in range(len(trial_combs)):
-    final_result = ml(
+    final_result = train_ml_model(
         trial_combs=trial_combs,
         trials=trials,
         labels=labels,
         train_valid_idx=train_valid_idx,
         test_idx=test_idx,
     )
-
-    print(
-        f"Combination {trials}  {os.listdir(EMBEDDINGS)} >  selected parameters:\n"
-        f"Best_params: {final_result['best_parameters']}\n"
-        f"Train accuracy: {final_result['tr_result_acc']}\n"
-        f"Train weighted-f1: {final_result['tr_result_wf1']}\n"
-        f"Train macro-f1: {final_result['tr_result_mf1']}\n"
-        f"Test accuracy: {final_result['result_acc']}\n"
-        f"Test weighted-f1: {final_result['result_wf1']}\n"
-        f"Test macro-f1: {final_result['result_mf1']}"
-    )
+    logger.info(f"Combination {trials}, selected parameters:")
+    for key, res in final_result.items():
+        logger.info(f"{key}: {res}")
+    logger.info("Done\n")
 
 
 end = time.time()

@@ -1,5 +1,5 @@
 from collections import namedtuple
-from typing import Optional, Tuple, Union
+from typing import Optional, Union
 
 import numpy as np
 import pandas as pd
@@ -10,29 +10,31 @@ from module import (
     SUPREME,
     Discriminator,
     Encoder,
+    EncoderDecoder,
+    EncoderInnerProduct,
+    SupremeClassification,
+    SupremeClusteringLink,
 )
 from settings import (
     CONTEXT_SIZE,
     DISCRIMINATOR,
     EMBEDDING_DIM,
     LEARNING,
+    LINKPREDICTION,
     MASKING,
     NODE2VEC,
     ONLY_POS,
-    POS_NEG,
     SPARSE,
     WALK_LENGHT,
     WALK_PER_NODE,
     P,
     Q,
 )
-from module import EncoderDecoder, EncoderInnerProduct
 from sklearn.model_selection import RepeatedStratifiedKFold, train_test_split
 from torch import Tensor
-from torch.nn import CrossEntropyLoss, Module, MSELoss
+from torch.nn import Module
 from torch_geometric.data import Data
 from torch_geometric.nn import Node2Vec
-from torch_geometric.utils.negative_sampling import negative_sampling
 from torch_geometric.utils.num_nodes import maybe_num_nodes
 
 DEVICE = torch.device("cpu")
@@ -78,39 +80,15 @@ class GCNSupervised:
             labels=self.labels,
         )
 
-    def model_loss_output(self) -> Tuple[Union[MSELoss, CrossEntropyLoss], int]:
-        if LEARNING == "regression":
-            criterion = MSELoss()
+    def model_loss_output(self) -> int:
+        if LEARNING == LearningTypes.regression.name:
             out_size = 1
-        elif LEARNING == "classification":
-            criterion = CrossEntropyLoss()
+        elif LEARNING == LearningTypes.classification.name:
             # should be int. Check later
             out_size = torch.tensor(
                 len(self.labels.value_counts().unique())
             )  # torch.tensor(self.labels).shape[0]
-        return criterion, out_size
-
-    def train(self, model, optimizer, data: Data, criterion):
-        model.train()
-        optimizer.zero_grad()
-        out, emb1, _ = model(data)
-        loss = criterion(
-            out[data.train_mask],
-            data.y[data.train_mask],
-        )
-        loss.backward()
-        optimizer.step()
-        return emb1
-
-    def validate(self, model, criterion, data):
-        model.eval()
-        with torch.no_grad():
-            out, emb2, _ = model(data)
-            loss = criterion(
-                out[data.valid_mask],
-                data.y[data.valid_mask],
-            )
-        return loss, emb2
+        return out_size
 
 
 class GCNUnsupervised:
@@ -152,25 +130,25 @@ class GCNUnsupervised:
             num_nodes = maybe_num_nodes(data.edge_index)
             mask_edges = torch.rand(edge_index.size(1)) < 0.5
             non_mask_edges = ~mask_edges
-            data.neg_edge_labels = data.edge_index.clone()
-            data.neg_edge_labels[0:mask_edges] = torch.randint(
+            neg_edge_labels = data.edge_index.clone()
+            neg_edge_labels[0:mask_edges] = torch.randint(
                 num_nodes, (mask_edges.sum(),), device=DEVICE
             )
-            data.neg_edge_labels[0:non_mask_edges] = torch.randint(
+            neg_edge_labels[0:non_mask_edges] = torch.randint(
                 num_nodes, (non_mask_edges.sum(),), device=DEVICE
             )
+            data.neg_edge_labels = neg_edge_labels
         return train_test_valid(
             data=data, train_valid_idx=train_valid_idx, test_idx=test_idx
         )
 
-    def model_loss_output(self) -> Tuple[MSELoss, int]:
+    def model_loss_output(self) -> int:
         """
-        This function selects the loss function and the output size
+        This function selects the output size
 
         """
-        criterion = MSELoss()
-        out_size = self.new_x.shape[-1]
-        return criterion, out_size
+        return self.new_x.shape[-1]
+
 
 def make_data(new_x: Tensor, edge_index: pd.DataFrame) -> Data:
     """
@@ -224,7 +202,7 @@ def train_test_valid(
     Return:
         A data object that holds train, test, and validation indexes
     """
-    if labels:
+    if isinstance(labels, pd.DataFrame):
         try:
             X = data.x[train_valid_idx.indices]
             y = data.y[train_valid_idx.indices]
@@ -304,22 +282,24 @@ def select_optimizer(
         return losses(encoder_loss=encoder_loss, decoder_loss=decoder_loss)
     elif isinstance(model, EncoderInnerProduct):
         return torch.optim.Adam(model.encoder.parameters(), lr=learning_rate)
-    
+
     if optimizer_type == OptimizerType.sgd.name:
         return torch.optim.SGD(
             model.parameters(), lr=learning_rate, weight_decay=0.001, momentum=0.9
         )
     elif optimizer_type == OptimizerType.adam.name:
-        return torch.optim.Adam(model.parameters(), lr=learning_rate)
+        return torch.optim.Adam(model.model.parameters(), lr=learning_rate)
     elif optimizer_type == OptimizerType.sparse_adam.name:
         return torch.optim.SparseAdam(list(model.parameters()), lr=learning_rate)
     else:
         raise NotImplementedError
 
 
-def select_model(in_size: int, hid_size: int, out_size: int) -> Union[SUPREME, EncoderDecoder, EncoderInnerProduct]:
+def select_model(
+    in_size: int, hid_size: int, out_size: int
+) -> Union[SupremeClassification, EncoderDecoder, EncoderInnerProduct]:
     """
-    This function selects the return of the model 
+    This function selects the return of the model
 
     Parameters:
     ----------
@@ -334,7 +314,8 @@ def select_model(in_size: int, hid_size: int, out_size: int) -> Union[SUPREME, E
         Models, whether original SUPREME, or encoder-decoder model
     """
     if LEARNING in [LearningTypes.classification.name, LearningTypes.regression.name]:
-        return SUPREME(in_size=in_size, hid_size=hid_size, out_size=out_size)
+        model = SUPREME(in_size=in_size, hid_size=hid_size, out_size=out_size)
+        return SupremeClassification(model=model)
     else:
         if ONLY_POS:
             encoder = SUPREME(in_size=in_size, hid_size=hid_size, out_size=out_size)
@@ -345,7 +326,6 @@ def select_model(in_size: int, hid_size: int, out_size: int) -> Union[SUPREME, E
                 in_size=in_size, hid_size=hid_size, out_size=out_size
             )
             return EncoderDecoder(encoder=encoder, discriminator=discriminator)
-        else:
-            return SUPREME(in_size=in_size, hid_size=hid_size, out_size=out_size)
-            # encoder_decoder loss, criterion is MSE
-            # loss = criterion(out[data.train_mask], data.x[data.train_mask])
+        elif LINKPREDICTION:
+            model = SUPREME(in_size=in_size, hid_size=hid_size, out_size=out_size)
+            return SupremeClusteringLink(model=model)
