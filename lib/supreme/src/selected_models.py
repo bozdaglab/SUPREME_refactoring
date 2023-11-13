@@ -166,12 +166,10 @@ def make_data(new_x: Tensor, edge_index: pd.DataFrame) -> Data:
     return Data(
         x=new_x,
         edge_index=torch.tensor(
-            edge_index[edge_index.columns[0:2]].transpose().values,
-            device=DEVICE,
+            edge_index[edge_index.columns[0:2]].transpose().values, device=DEVICE,
         ).long(),
         edge_attr=torch.tensor(
-            edge_index[edge_index.columns[2]].transpose().values,
-            device=DEVICE,
+            edge_index[edge_index.columns[2]].transpose().values, device=DEVICE,
         ).float(),
     )
 

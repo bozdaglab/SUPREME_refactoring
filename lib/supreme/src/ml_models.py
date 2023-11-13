@@ -263,11 +263,7 @@ class MLModels:
         }
 
         search = RandomizedSearchCV(
-            KMeans(),
-            param_distributions=params,
-            cv=4,
-            n_iter=X_TIME,
-            verbose=0,
+            KMeans(), param_distributions=params, cv=4, n_iter=X_TIME, verbose=0,
         )
 
         search.fit(self.x_train)

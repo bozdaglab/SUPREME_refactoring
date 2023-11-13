@@ -1,7 +1,8 @@
+import json
 import os
 from distutils.util import strtobool
 from pathlib import Path
-import json
+
 from dotenv import find_dotenv, load_dotenv
 
 load_dotenv(find_dotenv())
@@ -25,12 +26,12 @@ FEATURE_TO_DROP = json.loads(os.environ.get("FEATURE_TO_DROP"))
 OPTIM = os.environ.get("OPTIM")
 STAT_METHOD = os.environ.get("STAT_METHOD")
 LEARNING_RATE = json.loads(os.environ.get("LEARNING_RATE"))
-HIDDEN_SIZE=json.loads(os.environ.get("HIDDEN_SIZE"))
+HIDDEN_SIZE = json.loads(os.environ.get("HIDDEN_SIZE"))
 X_TIME = int(os.environ.get("X_TIME"))
 DISCRIMINATOR = bool(os.environ.get("DISCRIMINATOR"))
 NODE2VEC = bool(os.environ.get("NODE2VEC"))
 MASKING = bool(os.environ.get("MASKING"))
-LINKPREDICTION = bool( os.environ.get("LINKPREDICTION"))
+LINKPREDICTION = bool(os.environ.get("LINKPREDICTION"))
 POS_NEG = bool(os.environ.get("POS_NEG"))
 UNNAMED = os.environ.get("UNNAMED")
 BORUTA_RUNS = int(os.environ.get("BORUTA_RUNS"))
@@ -66,11 +67,3 @@ NODE_NETWORKS = FEATURE_NETWORKS_INTEGRATION.copy()
 
 FEATURE_SELECTION_PER_NETWORK = [False, False, False]
 TOP_FEATURES_PER_NETWORK = [50, 50, 50]
-
-
-
-
-
-
-
-

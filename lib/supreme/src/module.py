@@ -23,7 +23,7 @@ elif LEARNING == LearningTypes.classification.name:
 # https://arxiv.org/abs/1706.02216
 
 
-class SUPREME(Module): #
+class SUPREME(Module):  #
     """
     Training SUPREME model
     """
@@ -59,7 +59,7 @@ class Encoder(Module):
         return self.conv_mu(x, edge_index), self.conv_logstd(x, edge_index)
 
 
-class Discriminator(Module): 
+class Discriminator(Module):
     def __init__(self, in_size: int, hid_size: int, out_size: int):
         super().__init__()
         self.lin1 = Linear(in_size, hid_size)
@@ -72,9 +72,10 @@ class Discriminator(Module):
         return self.lin3(x)
 
 
-class SupremeClassification: #
+class SupremeClassification:  #
     def __init__(self, model: SUPREME) -> None:
         self.model = model
+
     def train(self, optimizer: torch.optim, data: Data):
         self.model.train()
         optimizer.zero_grad()
@@ -92,13 +93,13 @@ class SupremeClassification: #
         return loss, emb
 
 
-class SupremeClusteringLink: #
+class SupremeClusteringLink:  #
     def __init__(self, model: SUPREME) -> None:
         self.model = model
         self.criterion_link = torch.nn.BCEWithLogitsLoss()
 
     def train(self, optimizer: torch.optim, data: Data):
-        if LINKPREDICTION: #Done
+        if LINKPREDICTION:  # Done
             return self.train_link_prediction(optimizer, data)
         else:
             return self.train_posneg(optimizer, data)
@@ -106,7 +107,7 @@ class SupremeClusteringLink: #
     def validate(self, data: Data):
         if LINKPREDICTION:
             return self.validation_link_prediction(data)
-        
+
     def train_link_prediction(self, optimizer: torch.optim, data: Data):
         # GraphSAGE predict adhacency matrix
         self.model.train()
@@ -121,7 +122,7 @@ class SupremeClusteringLink: #
         return loss
 
     @torch.no_grad()
-    def validation_link_prediction(self, data: Data): #
+    def validation_link_prediction(self, data: Data):  #
         self.model.eval()
         emb, _ = self.model(data)
         h_src = emb[data.edge_index[0]]
@@ -129,7 +130,7 @@ class SupremeClusteringLink: #
         link_pred = (h_src * h_dst).sum(dim=-1)
         loss = self.criterion_link(link_pred, data.edge_attr)
         return loss, emb
-    
+
     def train_posneg(self, optimizer: torch.optim, data: Data):
         self.model.train()
         optimizer.zero_grad()
@@ -154,7 +155,7 @@ class SupremeClusteringLink: #
         return (h_start * h_rest).sum(dim=-1).view(-1)
 
 
-class EncoderDecoder: #Done Predict input values #
+class EncoderDecoder:  # Done Predict input values #
     def __init__(self, encoder: Encoder, discriminator: Discriminator):
         self.encoder = encoder
         self.discriminator = discriminator
@@ -185,15 +186,17 @@ class EncoderDecoder: #Done Predict input values #
             return self.validate_positive_negative(data)
         else:
             return self.validate_original_input(data)
+
     @torch.no_grad()
-    def validate_original_input(self, data: Data):#!
+    def validate_original_input(self, data: Data):
+        #!
         criterion = torch.nn.MSELoss()
         self.model.eval()
         emb = self.model.encode(data)
         return criterion(torch.matmul(emb, emb.T), data.x[data.valid_mask]), emb
 
     @torch.no_grad()
-    def validate_positive_negative(self, data: Data):#
+    def validate_positive_negative(self, data: Data):
         criterion = torch.nn.BCEWithLogitsLoss()
         self.model.eval()
         emb = self.model.encode(data)
@@ -201,7 +204,7 @@ class EncoderDecoder: #Done Predict input values #
         return criterion(y, y_pred), emb
 
 
-class EncoderInnerProduct: #Done predict positive and nagative links
+class EncoderInnerProduct:  # Done predict positive and nagative links
     def __init__(self, encoder: SUPREME):
         self.encoder = encoder
         self.model = GAE(encoder=self.encoder)
@@ -231,5 +234,3 @@ class EncoderInnerProduct: #Done predict positive and nagative links
         pred = torch.cat([pos_pred, neg_pred], dim=0)
         loss = self.criterion(y, pred)
         return loss, emb
-
-
