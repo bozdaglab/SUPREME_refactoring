@@ -188,18 +188,18 @@ class EncoderDecoder:  # Done Predict input values #
             return self.validate_original_input(data)
 
     @torch.no_grad()
-    def validate_original_input(self, data: Data):
-        #!
+    def validate_original_input(self, data: Data):  #!
         criterion = torch.nn.MSELoss()
         self.model.eval()
         emb = self.model.encode(data)
         return criterion(torch.matmul(emb, emb.T), data.x[data.valid_mask]), emb
 
     @torch.no_grad()
-    def validate_positive_negative(self, data: Data):
+    def validate_positive_negative(self, data: Data):  #
         criterion = torch.nn.BCEWithLogitsLoss()
         self.model.eval()
         emb = self.model.encode(data)
+        # test return wrong result
         y, y_pred = self.model.test(emb, data.pos_edge_labels, data.neg_edge_labels)
         return criterion(y, y_pred), emb
 
