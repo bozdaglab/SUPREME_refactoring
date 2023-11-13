@@ -4,7 +4,7 @@ import pandas as pd
 from set_logging import set_log_config
 from settings import IMPUTER_NAME_SUBSET, IMPUTER_NAME_WHOLE
 
-# from sklearn.experimental import enable_iterative_imputer
+from sklearn.experimental import enable_iterative_imputer
 from sklearn.impute import IterativeImputer, KNNImputer
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.tree import ExtraTreeRegressor

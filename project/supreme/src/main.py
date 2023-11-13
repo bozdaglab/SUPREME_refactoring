@@ -51,8 +51,12 @@ def pickle_to_csv():
                 to_save_folder = LABELS
             else:
                 to_save_folder = DATA
+            if not os.path.exists(to_save_folder):
+                os.mkdir(to_save_folder)
             pd.DataFrame(data).to_csv(f"{to_save_folder}/{file.split('.')[0]}.csv")
 
+
+pickle_to_csv()
 
 labels = None
 for file in os.listdir(LABELS):
@@ -64,7 +68,7 @@ for file in os.listdir(LABELS):
 
 
 start = time.time()
-pickle_to_csv()
+
 similarity_matrix_generation()
 logger.info("SUPREME is running..")
 new_x = node_feature_generation(labels=labels)

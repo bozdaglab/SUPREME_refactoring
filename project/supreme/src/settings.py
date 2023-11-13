@@ -1,16 +1,47 @@
 import os
 from distutils.util import strtobool
 from pathlib import Path
-
+import json
 from dotenv import find_dotenv, load_dotenv
 
 load_dotenv(find_dotenv())
 
 
-INPUT_SIZE = os.environ.get("INPUT_SIZE")
-HIDDEN_SIZE = os.environ.get("HIDDEN_SIZE")
-OUT_SIZE = os.environ.get("OUT_SIZE")
-
+ADD_RAW_FEAT = bool(strtobool(os.environ.get("ADD_RAW_FEAT")))
+LEARNING = os.environ.get("LEARNING")
+if LEARNING == "clustering":
+    INT_MOTHOD = os.environ.get("INT_MOTHOD_CLUSTERING")
+else:
+    INT_MOTHOD = os.environ.get("INT_MOTHOD_CLASSIFICATION")
+OPTIONAL_FEATURE_SELECTION = bool(
+    strtobool(os.environ.get("OPTIONAL_FEATURE_SELECTION"))
+)
+LOGGING_LEVEL = os.environ.get("LOGGING_LEVEL")
+IMPUTER_NAME_SUBSET = os.environ.get("IMPUTER_NAME_SUBSET")
+IMPUTER_NAME_WHOLE = os.environ.get("IMPUTER_NAME_WHOLE")
+CLASS_NAME = os.environ.get("CLASS_NAME")
+GROUPBY_COLUMNS = json.loads(os.environ.get("GROUPBY_COLUMNS"))
+FEATURE_TO_DROP = json.loads(os.environ.get("FEATURE_TO_DROP"))
+OPTIM = os.environ.get("OPTIM")
+STAT_METHOD = os.environ.get("STAT_METHOD")
+LEARNING_RATE = json.loads(os.environ.get("LEARNING_RATE"))
+HIDDEN_SIZE=json.loads(os.environ.get("HIDDEN_SIZE"))
+X_TIME = int(os.environ.get("X_TIME"))
+DISCRIMINATOR = bool(os.environ.get("DISCRIMINATOR"))
+NODE2VEC = bool(os.environ.get("NODE2VEC"))
+MASKING = bool(os.environ.get("MASKING"))
+LINKPREDICTION = bool( os.environ.get("LINKPREDICTION"))
+POS_NEG = bool(os.environ.get("POS_NEG"))
+UNNAMED = os.environ.get("UNNAMED")
+BORUTA_RUNS = int(os.environ.get("BORUTA_RUNS"))
+BORUTA_TOP_FEATURES = int(os.environ.get("BORUTA_TOP_FEATURES"))
+EMBEDDING_DIM = int(os.environ.get("EMBEDDING_DIM"))
+WALK_LENGHT = int(os.environ.get("WALK_LENGHT"))
+CONTEXT_SIZE = int(os.environ.get("CONTEXT_SIZE"))
+WALK_PER_NODE = int(os.environ.get("WALK_PER_NODE"))
+P = int(os.environ.get("P"))
+Q = int(os.environ.get("Q"))
+SPARSE = bool(os.environ.get("SPARSE"))
 
 FORMAT = "%(asctime)s.%(msecs)03d %(name)-8s %(levelname)-4s %(message)s"
 DATE_FORMAT = "%m-%d %H:%M:%S"
@@ -19,57 +50,27 @@ EMBEDDINGS = BASE_DATAPATH / "embeddings"
 EDGES = BASE_DATAPATH / "edges"
 DATA = BASE_DATAPATH / "data"
 LABELS = BASE_DATAPATH / "labels"
-IMPUTER_NAME_SUBSET = os.environ.get("IMPUTER_NAME_SUBSET")
-IMPUTER_NAME_WHOLE = os.environ.get("IMPUTER_NAME_WHOLE")
-CLASS_NAME = os.environ.get("CLASS_NAME")
-GROUPBY_COLUMNS = ["CDR_Sum", "ID_Gender"]
+
+
+X_TIME2 = int(os.environ.get("X_TIME2"))
+MAX_EPOCHS = int(os.environ.get("MAX_EPOCHS"))
+MIN_EPOCHS = int(os.environ.get("MIN_EPOCHS"))
+PATIENCE = int(os.environ.get("PATIENCE"))
+
 FEATURE_NETWORKS_INTEGRATION = [
     i for i in os.listdir(BASE_DATAPATH) if i.endswith(".csv")
 ]
-FEATURE_TO_DROP = ["Med_ID", "Visit_ID", "CDR_Sum"]
+
 NODE_NETWORKS = FEATURE_NETWORKS_INTEGRATION.copy()
-LEARNING = "classification"
-OPTIM = "adam"
-STAT_METHOD = "pearson"
-LEARNING_RATE = [0.01]
-HIDDEN_SIZE = [32]
-X_TIME = 50
+
+
 FEATURE_SELECTION_PER_NETWORK = [False, False, False]
 TOP_FEATURES_PER_NETWORK = [50, 50, 50]
 
-POS_NEG = True  # bool(os.environ.get("NODE2VEC"))
-ONLY_POS = True
-DISCRIMINATOR = False
-NODE2VEC = True  # bool(os.environ.get("NODE2VEC"))
-MASKING = False  # bool(os.environ.get("MASKING"))
-LINKPREDICTION = False
 
-UNNAMED = "Unnamed: 0"
-LOGGING_LEVEL = os.environ.get("LOGGING_LEVEL")
-ADD_RAW_FEAT = bool(strtobool(os.environ.get("ADD_RAW_FEAT")))
-if LEARNING == "clustering":
-    INT_MOTHOD = os.environ.get("INT_MOTHOD_CLUSTERING")
-else:
-    INT_MOTHOD = os.environ.get("INT_MOTHOD_CLASSIFICATION")
-# X_TIME2 = os.environ.get("X_TIME2")
-X_TIME2 = 2
-# MAX_EPOCHS = os.environ.get("MAX_EPOCHS")
-# MAX_EPOCHS = os.environ.get("MAX_EPOCHS")
-# MAX_EPOCHS = os.environ.get("MAX_EPOCHS")
-MAX_EPOCHS = 2
-MIN_EPOCHS = 1
-PATIENCE = 0
-OPTIONAL_FEATURE_SELECTION = bool(
-    strtobool(os.environ.get("OPTIONAL_FEATURE_SELECTION"))
-)
-# BORUTA_RUNS = os.environ.get("BORUTA_RUNS")
-BORUTA_RUNS = 100
-# BORUTA_TOP_FEATURES = os.environ.get("BORUTA_TOP_FEATURES")
-BORUTA_TOP_FEATURES = 50
-EMBEDDING_DIM = 128
-WALK_LENGHT = 6
-CONTEXT_SIZE = 2
-WALK_PER_NODE = 3
-P = 1.0
-Q = 1.0
-SPARSE = True
+
+
+
+
+
+

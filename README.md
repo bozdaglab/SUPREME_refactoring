@@ -18,8 +18,8 @@ pip install pre-commit
 # Install the python dependencies
 
 ```shell script
-pip install -r project/supreme/requirements.txt
-pip install -r project/supreme/requirements-dev.txt
+pip install -r requirements.txt
+pip install -r requirements-dev.txt
 pip install -e lib/supreme
 ```
 
@@ -29,3 +29,4 @@ pip install -e lib/supreme
 pre-commit install
 
 ```
+### run this to clean docker espace sudo docker container prune -f && sudo docker image prune -f docker system prune -a

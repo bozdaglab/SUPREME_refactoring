@@ -23,7 +23,6 @@ from settings import (
     LINKPREDICTION,
     MASKING,
     NODE2VEC,
-    ONLY_POS,
     SPARSE,
     WALK_LENGHT,
     WALK_PER_NODE,
@@ -317,10 +316,7 @@ def select_model(
         model = SUPREME(in_size=in_size, hid_size=hid_size, out_size=out_size)
         return SupremeClassification(model=model)
     else:
-        if ONLY_POS:
-            encoder = SUPREME(in_size=in_size, hid_size=hid_size, out_size=out_size)
-            return EncoderInnerProduct(encoder=encoder)
-        elif DISCRIMINATOR:
+        if DISCRIMINATOR:
             encoder = Encoder(in_size=in_size, hid_size=hid_size, out_size=out_size)
             discriminator = Discriminator(
                 in_size=in_size, hid_size=hid_size, out_size=out_size
@@ -329,3 +325,6 @@ def select_model(
         elif LINKPREDICTION:
             model = SUPREME(in_size=in_size, hid_size=hid_size, out_size=out_size)
             return SupremeClusteringLink(model=model)
+        else:
+            encoder = SUPREME(in_size=in_size, hid_size=hid_size, out_size=out_size)
+            return EncoderInnerProduct(encoder=encoder)
