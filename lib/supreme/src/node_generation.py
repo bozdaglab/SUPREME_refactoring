@@ -66,7 +66,10 @@ def node_feature_generation(labels: Optional[pd.DataFrame]) -> Tensor:
     return new_x
 
 
-def node_embedding_generation(new_x: Tensor, labels: Optional[pd.DataFrame],) -> None:
+def node_embedding_generation(
+    new_x: Tensor,
+    labels: Optional[pd.DataFrame],
+) -> None:
     """
     This function loads edges, turns SUPREME to supervised or unsupervised
     and generates embeddings for each omic
