@@ -1,8 +1,5 @@
 from setuptools import find_packages, setup
 
-with open("README.md") as f:
-    readme = f.read()
-
 with open("requirements.txt") as f:
     install_requires = f.read().splitlines()
 
@@ -16,7 +13,6 @@ setup(
     name="lib",
     version=0.01,
     description="supreme_model",
-    long_description=readme,
     author="Kesimoglu, Ziynet Nesibe",
     author_email="ziynetnesibe.kesimoglu@nih.gov",
     license="",

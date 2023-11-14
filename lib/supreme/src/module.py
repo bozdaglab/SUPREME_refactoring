@@ -2,7 +2,7 @@ import torch
 import torch.nn.functional as F
 from dotenv import find_dotenv, load_dotenv
 from learning_types import LearningTypes
-from settings import LEARNING, LINKPREDICTION
+from settings import LEARNING
 from torch.nn import Linear, Module
 from torch_geometric.data import Data
 from torch_geometric.nn import ARGVA, GAE, GCNConv
@@ -17,8 +17,6 @@ if LEARNING == LearningTypes.regression.name:
     CRITERION = torch.nn.MSELoss()
 elif LEARNING == LearningTypes.classification.name:
     CRITERION = torch.nn.CrossEntropyLoss()
-elif LEARNING == LearningTypes.clustering.name:
-    CRITERION = torch.nn.BCEWithLogitsLoss()
 
 # https://arxiv.org/abs/1607.00653,
 # https://arxiv.org/abs/1611.0730,
@@ -98,55 +96,30 @@ class SupremeClassification:
 class SupremeClusteringLink:
     def __init__(self, model: SUPREME) -> None:
         self.model = model
+        self.criterion_link = torch.nn.BCEWithLogitsLoss()
 
     def train(self, optimizer: torch.optim, data: Data):
-        if LINKPREDICTION:
-            return self.train_link_prediction(optimizer, data)
-        else:
-            return self.train_posneg(optimizer, data)
-
-    def train_link_prediction(self, optimizer: torch.optim, data: Data):
-        # GraphSAGE
+        # GraphSAGE predict adhacency matrix
         self.model.train()
         optimizer.zero_grad()
-        emb = self.model(data)
-        h_src = emb[data.edge_label_index[0]]
-        h_dst = emb[data.edge_label_index[1]]
+        emb, _ = self.model(data)
+        h_src = emb[data.edge_index[0]]
+        h_dst = emb[data.edge_index[1]]
         link_pred = (h_src * h_dst).sum(dim=-1)
-        loss = CRITERION(link_pred, data.edge_index)
+        loss = self.criterion_link(link_pred, data.edge_attr)
         loss.backward()
         optimizer.step()
         return loss
 
-    def train_posneg(self, optimizer: torch.optim, data: Data):
-        self.model.train()
-        optimizer.zero_grad()
-        emb, _ = self.model(data)
-
-        # Positive loss.
-        pos_rw = data.pos_edge_labels
-        start, rest = pos_rw[:, 0], pos_rw[:, 1:].contiguous()
-        out = self.compute(emb, start, rest, pos_rw)
-        pos_loss = -torch.log(torch.sigmoid(out) + EPS).mean()
-
-        # Negative loss.
-        neg_rw = data.neg_edge_labels
-        start, rest = neg_rw[:, 0], neg_rw[:, 1:].contiguous()
-        out = self.compute(emb, start, rest, pos_rw)
-        neg_loss = -torch.log(1 - torch.sigmoid(out) + EPS).mean()
-        return pos_loss + neg_loss  # maybe get the average loss
-
-    def compute(self, emb, start, rest, rw):
-        h_start = emb[start].view(rw.size(0), 1, emb.size(1))
-        h_rest = emb[rest.view(-1)].view(rw.size(0), -1, emb.size(1))
-        return (h_start * h_rest).sum(dim=-1).view(-1)
-
     @torch.no_grad()
-    def validation(self, data: Data):
+    def validate(self, data: Data):
         self.model.eval()
-        emb, _ = self.mdoel(data)
-        # encoder_decoder loss, criterion is MSE
-        # loss = criterion(out[data.train_mask], data.x[data.train_mask])
+        emb, _ = self.model(data)
+        h_src = emb[data.edge_index[0]]
+        h_dst = emb[data.edge_index[1]]
+        link_pred = (h_src * h_dst).sum(dim=-1)
+        loss = self.criterion_link(link_pred, data.edge_attr)
+        return loss, emb
 
 
 class EncoderDecoder:
@@ -177,15 +150,29 @@ class EncoderDecoder:
 
     @torch.no_grad()
     def validate(self, data: Data):
+        criterion = torch.nn.BCEWithLogitsLoss()
         self.model.eval()
-        emb = self.model.encode(data.x, data.edge_index, data.edge_attr)
-        return self.model.test(emb, data.pos_edge_labels, data.neg_edge_labels), emb
+        emb = self.model.encode(data)
+
+        pos_y = emb.new_ones(data.pos_edge_labels.size(1))
+        neg_y = emb.new_zeros(data.neg_edge_labels.size(1))
+        y = torch.cat([pos_y, neg_y], dim=0)
+
+        pos_pred = torch.sigmoid(
+            (emb[data.pos_edge_labels[0]] * emb[data.pos_edge_labels[1]]).sum(dim=1)
+        )
+        neg_pred = torch.sigmoid(
+            (emb[data.neg_edge_labels[0]] * emb[data.neg_edge_labels[1]]).sum(dim=1)
+        )
+        pred = torch.cat([pos_pred, neg_pred], dim=0)
+        return criterion(y, pred), emb
 
 
 class EncoderInnerProduct:
     def __init__(self, encoder: SUPREME):
         self.encoder = encoder
         self.model = GAE(encoder=self.encoder)
+        self.criterion = torch.nn.BCEWithLogitsLoss()
 
     def train(self, optimizer: torch.optim, data: Data):
         self.model.train()
@@ -202,4 +189,53 @@ class EncoderInnerProduct:
     def validate(self, data: Data):
         self.model.eval()
         emb, _ = self.model.encode(data)
-        return self.model.test(emb, data.pos_edge_labels, data.neg_edge_labels), emb
+        pos_y = emb.new_ones(data.pos_edge_labels.size(1))
+        neg_y = emb.new_zeros(data.neg_edge_labels.size(1))
+        y = torch.cat([pos_y, neg_y], dim=0)
+
+        pos_pred = self.model.decoder(emb, data.pos_edge_labels, sigmoid=True)
+        neg_pred = self.model.decoder(emb, data.neg_edge_labels, sigmoid=True)
+        pred = torch.cat([pos_pred, neg_pred], dim=0)
+        loss = self.criterion(y, pred)
+        return loss, emb
+
+
+class EncoderEntireInput:
+    def __init__(self, encoder: SUPREME, decoder: Discriminator):
+        self.encoder = encoder
+        self.decoder = decoder
+        self.criterion = torch.nn.MSELoss()
+
+    def train(self, optimizer: torch.optim, data: Data):
+        self.encoder.train()
+        optimizer.encoder_loss.zero_grad()
+
+        emb, _ = self.encoder(data)
+
+        # Positive loss.
+        pos_rw = data.pos_edge_labels
+        start, rest = pos_rw[:, 0], pos_rw[:, 1:].contiguous()
+        out = self.compute(emb, start, rest, pos_rw)
+        pos_loss = -torch.log(torch.sigmoid(out) + EPS).mean()
+
+        # Negative loss.
+        neg_rw = data.neg_edge_labels
+        start, rest = neg_rw[:, 0], neg_rw[:, 1:].contiguous()
+        out = self.compute(emb, start, rest, pos_rw)
+        neg_loss = -torch.log(1 - torch.sigmoid(out) + EPS).mean()
+        loss = pos_loss + neg_loss  # maybe get the average loss
+        loss.backward()
+        optimizer.encoder_loss.step()
+        return loss
+
+    def compute(self, emb, start, rest, rw):
+        h_start = emb[start].view(rw.size(0), 1, emb.size(1))
+        h_rest = emb[rest.view(-1)].view(rw.size(0), -1, emb.size(1))
+        return (h_start * h_rest).sum(dim=-1).view(-1)
+
+    @torch.no_grad()
+    def validate(self, data: Data):
+        self.encoder.eval()
+        emb, _ = self.encoder(data)
+        dec_out = self.decoder(emb)
+        return self.criterion(dec_out, data.x), emb

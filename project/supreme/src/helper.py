@@ -71,10 +71,10 @@ def get_stat_methos(stat_method: str):
 
 
 def similarity_matrix_generation():
-    # parqua dataset
-    # if os.path.exists(EDGES):
-    #     return
-    # os.mkdir(EDGES)
+    # parqua dataset, parallel
+    if os.path.exists(EDGES):
+        return
+    os.mkdir(EDGES)
     for file in os.listdir(DATA):
         correlation_dictionary = defaultdict()
         data = pd.read_csv(DATA / file)

@@ -11,6 +11,7 @@ from module import (
     Discriminator,
     Encoder,
     EncoderDecoder,
+    EncoderEntireInput,
     EncoderInnerProduct,
     SupremeClassification,
     SupremeClusteringLink,
@@ -19,11 +20,11 @@ from settings import (
     CONTEXT_SIZE,
     DISCRIMINATOR,
     EMBEDDING_DIM,
+    ENCODERINPRODUCT,
     LEARNING,
     LINKPREDICTION,
     MASKING,
     NODE2VEC,
-    ONLY_POS,
     SPARSE,
     WALK_LENGHT,
     WALK_PER_NODE,
@@ -283,6 +284,11 @@ def select_optimizer(
     elif isinstance(model, EncoderInnerProduct):
         return torch.optim.Adam(model.encoder.parameters(), lr=learning_rate)
 
+    elif isinstance(model, EncoderEntireInput):
+        losses = namedtuple("losses", ["encoder_loss", "decoder_loss"])
+        encoder_loss = torch.optim.Adam(model.encoder.parameters(), lr=learning_rate)
+        decoder_loss = torch.optim.Adam(model.decoder.parameters(), lr=learning_rate)
+        return losses(encoder_loss=encoder_loss, decoder_loss=decoder_loss)
     if optimizer_type == OptimizerType.sgd.name:
         return torch.optim.SGD(
             model.parameters(), lr=learning_rate, weight_decay=0.001, momentum=0.9
@@ -317,10 +323,7 @@ def select_model(
         model = SUPREME(in_size=in_size, hid_size=hid_size, out_size=out_size)
         return SupremeClassification(model=model)
     else:
-        if ONLY_POS:
-            encoder = SUPREME(in_size=in_size, hid_size=hid_size, out_size=out_size)
-            return EncoderInnerProduct(encoder=encoder)
-        elif DISCRIMINATOR:
+        if DISCRIMINATOR:
             encoder = Encoder(in_size=in_size, hid_size=hid_size, out_size=out_size)
             discriminator = Discriminator(
                 in_size=in_size, hid_size=hid_size, out_size=out_size
@@ -329,3 +332,12 @@ def select_model(
         elif LINKPREDICTION:
             model = SUPREME(in_size=in_size, hid_size=hid_size, out_size=out_size)
             return SupremeClusteringLink(model=model)
+        elif ENCODERINPRODUCT:
+            encoder = SUPREME(in_size=in_size, hid_size=hid_size, out_size=out_size)
+            return EncoderInnerProduct(encoder=encoder)
+        else:
+            encoder = SUPREME(in_size=in_size, hid_size=hid_size, out_size=out_size)
+            decoder = Discriminator(
+                in_size=in_size, hid_size=hid_size, out_size=out_size
+            )
+            return EncoderEntireInput(encoder=encoder, decoder=decoder)

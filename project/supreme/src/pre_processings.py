@@ -55,7 +55,6 @@ def handle_missing(data: pd.DataFrame) -> pd.DataFrame:
         new_data = pd.DataFrame(imputer_1.fit_transform(data), columns=cols)
         sub_dataset = pd.concat([sub_dataset, new_data])
     except:
-
         imputer_2 = load_missing_method(IMPUTER_NAME_WHOLE)
         sub_dataset = pd.DataFrame(imputer_2.fit_transform(sub_dataset), columns=cols)
     return sub_dataset
