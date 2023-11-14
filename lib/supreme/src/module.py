@@ -23,7 +23,7 @@ elif LEARNING == LearningTypes.classification.name:
 # https://arxiv.org/abs/1706.02216
 
 
-class SUPREME(Module):  #
+class SUPREME(Module):
     """
     Training SUPREME model
     """
@@ -72,90 +72,7 @@ class Discriminator(Module):
         return self.lin3(x)
 
 
-class SupremeClassification:  #
-    def __init__(self, model: SUPREME) -> None:
-        self.model = model
-
-    def train(self, optimizer: torch.optim, data: Data):
-        self.model.train()
-        optimizer.zero_grad()
-        emb, _ = self.model(data)
-        loss = CRITERION(emb[data.train_mask], data.y[data.train_mask])
-        loss.backward()
-        optimizer.step()
-        return loss
-
-    @torch.no_grad()
-    def validate(self, data: Data):
-        self.model.eval()
-        emb, _ = self.model(data)
-        loss = CRITERION(emb[data.valid_mask], data.y[data.valid_mask])
-        return loss, emb
-
-
-class SupremeClusteringLink:  #
-    def __init__(self, model: SUPREME) -> None:
-        self.model = model
-        self.criterion_link = torch.nn.BCEWithLogitsLoss()
-
-    def train(self, optimizer: torch.optim, data: Data):
-        if LINKPREDICTION:  # Done
-            return self.train_link_prediction(optimizer, data)
-        else:
-            return self.train_posneg(optimizer, data)
-
-    def validate(self, data: Data):
-        if LINKPREDICTION:
-            return self.validation_link_prediction(data)
-
-    def train_link_prediction(self, optimizer: torch.optim, data: Data):
-        # GraphSAGE predict adhacency matrix
-        self.model.train()
-        optimizer.zero_grad()
-        emb, _ = self.model(data)
-        h_src = emb[data.edge_index[0]]
-        h_dst = emb[data.edge_index[1]]
-        link_pred = (h_src * h_dst).sum(dim=-1)
-        loss = self.criterion_link(link_pred, data.edge_attr)
-        loss.backward()
-        optimizer.step()
-        return loss
-
-    @torch.no_grad()
-    def validation_link_prediction(self, data: Data):  #
-        self.model.eval()
-        emb, _ = self.model(data)
-        h_src = emb[data.edge_index[0]]
-        h_dst = emb[data.edge_index[1]]
-        link_pred = (h_src * h_dst).sum(dim=-1)
-        loss = self.criterion_link(link_pred, data.edge_attr)
-        return loss, emb
-
-    def train_posneg(self, optimizer: torch.optim, data: Data):
-        self.model.train()
-        optimizer.zero_grad()
-        emb, _ = self.model(data)
-
-        # Positive loss.
-        pos_rw = data.pos_edge_labels
-        start, rest = pos_rw[:, 0], pos_rw[:, 1:].contiguous()
-        out = self.compute(emb, start, rest, pos_rw)
-        pos_loss = -torch.log(torch.sigmoid(out) + EPS).mean()
-
-        # Negative loss.
-        neg_rw = data.neg_edge_labels
-        start, rest = neg_rw[:, 0], neg_rw[:, 1:].contiguous()
-        out = self.compute(emb, start, rest, pos_rw)
-        neg_loss = -torch.log(1 - torch.sigmoid(out) + EPS).mean()
-        return pos_loss + neg_loss  # maybe get the average loss
-
-    def compute(self, emb, start, rest, rw):
-        h_start = emb[start].view(rw.size(0), 1, emb.size(1))
-        h_rest = emb[rest.view(-1)].view(rw.size(0), -1, emb.size(1))
-        return (h_start * h_rest).sum(dim=-1).view(-1)
-
-
-class EncoderDecoder:  # Done Predict input values #
+class EncoderDecoder:
     def __init__(self, encoder: Encoder, discriminator: Discriminator):
         self.encoder = encoder
         self.discriminator = discriminator
@@ -195,16 +112,52 @@ class EncoderDecoder:  # Done Predict input values #
         return criterion(torch.matmul(emb, emb.T), data.x[data.valid_mask]), emb
 
     @torch.no_grad()
-    def validate_positive_negative(self, data: Data):  #
+    def validate_positive_negative(self, data: Data):
         criterion = torch.nn.BCEWithLogitsLoss()
         self.model.eval()
         emb = self.model.encode(data)
-        # test return wrong result
+
+        pos_y = z.new_ones(pos_edge_index.size(1))
+        neg_y = z.new_zeros(neg_edge_index.size(1))
+        y = torch.cat([pos_y, neg_y], dim=0)
+
+        pos_pred = self.decoder(z, pos_edge_index, sigmoid=True)
+        neg_pred = self.decoder(z, neg_edge_index, sigmoid=True)
+        pred = torch.cat([pos_pred, neg_pred], dim=0)
+
+        y, pred = y.detach().cpu().numpy(), pred.detach().cpu().numpy()
+
+        return
+
         y, y_pred = self.model.test(emb, data.pos_edge_labels, data.neg_edge_labels)
         return criterion(y, y_pred), emb
 
 
-class EncoderInnerProduct:  # Done predict positive and nagative links
+"""DONE"""
+
+
+class SupremeClassification:
+    def __init__(self, model: SUPREME) -> None:
+        self.model = model
+
+    def train(self, optimizer: torch.optim, data: Data):
+        self.model.train()
+        optimizer.zero_grad()
+        emb, _ = self.model(data)
+        loss = CRITERION(emb[data.train_mask], data.y[data.train_mask])
+        loss.backward()
+        optimizer.step()
+        return loss
+
+    @torch.no_grad()
+    def validate(self, data: Data):
+        self.model.eval()
+        emb, _ = self.model(data)
+        loss = CRITERION(emb[data.valid_mask], data.y[data.valid_mask])
+        return loss, emb
+
+
+class EncoderInnerProduct:
     def __init__(self, encoder: SUPREME):
         self.encoder = encoder
         self.model = GAE(encoder=self.encoder)
@@ -234,3 +187,70 @@ class EncoderInnerProduct:  # Done predict positive and nagative links
         pred = torch.cat([pos_pred, neg_pred], dim=0)
         loss = self.criterion(y, pred)
         return loss, emb
+
+
+class SupremeClusteringLink:
+    def __init__(self, model: SUPREME) -> None:
+        self.model = model
+        self.criterion_link = torch.nn.BCEWithLogitsLoss()
+
+    def train(self, optimizer: torch.optim, data: Data):
+        if LINKPREDICTION:
+            return self.train_link_prediction(optimizer, data)
+        else:
+            return self.train_posneg(optimizer, data)
+
+    def validate(self, data: Data):
+        if LINKPREDICTION:
+            return self.validation_link_prediction(data)
+        else:
+            pass  # add the evaluation for the node2vec approach
+
+    def train_link_prediction(self, optimizer: torch.optim, data: Data):
+        # GraphSAGE predict adhacency matrix
+        self.model.train()
+        optimizer.zero_grad()
+        emb, _ = self.model(data)
+        h_src = emb[data.edge_index[0]]
+        h_dst = emb[data.edge_index[1]]
+        link_pred = (h_src * h_dst).sum(dim=-1)
+        loss = self.criterion_link(link_pred, data.edge_attr)
+        loss.backward()
+        optimizer.step()
+        return loss
+
+    @torch.no_grad()
+    def validation_link_prediction(self, data: Data):
+        self.model.eval()
+        emb, _ = self.model(data)
+        h_src = emb[data.edge_index[0]]
+        h_dst = emb[data.edge_index[1]]
+        link_pred = (h_src * h_dst).sum(dim=-1)
+        loss = self.criterion_link(link_pred, data.edge_attr)
+        return loss, emb
+
+    def train_posneg(self, optimizer: torch.optim, data: Data):
+        self.model.train()
+        optimizer.zero_grad()
+        emb, _ = self.model(data)
+
+        # Positive loss.
+        pos_rw = data.pos_edge_labels
+        start, rest = pos_rw[:, 0], pos_rw[:, 1:].contiguous()
+        out = self.compute(emb, start, rest, pos_rw)
+        pos_loss = -torch.log(torch.sigmoid(out) + EPS).mean()
+
+        # Negative loss.
+        neg_rw = data.neg_edge_labels
+        start, rest = neg_rw[:, 0], neg_rw[:, 1:].contiguous()
+        out = self.compute(emb, start, rest, pos_rw)
+        neg_loss = -torch.log(1 - torch.sigmoid(out) + EPS).mean()
+        return pos_loss + neg_loss  # maybe get the average loss
+
+    def compute(self, emb, start, rest, rw):
+        h_start = emb[start].view(rw.size(0), 1, emb.size(1))
+        h_rest = emb[rest.view(-1)].view(rw.size(0), -1, emb.size(1))
+        return (h_start * h_rest).sum(dim=-1).view(-1)
+
+    def evaluate():
+        pass
