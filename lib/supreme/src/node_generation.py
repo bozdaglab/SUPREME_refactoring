@@ -46,6 +46,7 @@ def node_feature_generation(labels: Optional[pd.DataFrame]) -> Tensor:
     is_first = True
     for file in os.listdir(DATA):
         feat = pd.read_csv(f"{DATA}/{file}")
+        # read as index_col[0] or save it with index=False.
         if UNNAMED in feat.columns:
             feat = feat.drop(UNNAMED, axis=1)
         if not any(

@@ -12,6 +12,7 @@ from helper import random_split, similarity_matrix_generation
 from node_generation import node_embedding_generation, node_feature_generation
 from set_logging import set_log_config
 from settings import BASE_DATAPATH, DATA, EDGES, EMBEDDINGS, LABELS, LEARNING, UNNAMED
+from sklearn.preprocessing import LabelEncoder
 from train_mls import train_ml_model
 
 load_dotenv(find_dotenv())
@@ -36,27 +37,47 @@ def combine_trails() -> List[List[int]]:
     # return [combinations(NODE_NETWORKS, i) for i in range(1, len(NODE_NETWORKS)+1)]
 
 
-def pickle_to_csv():
+def pickle_txt_to_parquet():
     """
     Search in the given repository, and load pickle files, if exist,
     and convert them to csv with the same name
     """
+    encoder = LabelEncoder()
     for file in os.listdir(BASE_DATAPATH):
         if file.endswith(".pkl"):
             with open(f"{BASE_DATAPATH}/{file}", "rb") as pkl_file:
                 data = pickle.load(pkl_file)
-            if "edges_" in file:
-                to_save_folder = EDGES
-            elif "labels." in file:
-                to_save_folder = LABELS
-            else:
-                to_save_folder = DATA
-            if not os.path.exists(to_save_folder):
-                os.mkdir(to_save_folder)
-            pd.DataFrame(data).to_csv(f"{to_save_folder}/{file.split('.')[0]}.csv")
+        elif file.endswith(".txt"):
+            with open(f"{BASE_DATAPATH}/{file}", "rb") as txt_file:
+                data = pd.read_csv(txt_file, sep="\t")
+
+        if "data_cna" in file:
+            data.drop("Entrez_Gene_Id", axis=1, inplace=True)
+        if "edges_" in file:
+            to_save_folder = EDGES
+        elif "labels." in file:
+            to_save_folder = LABELS
+        else:
+            to_save_folder = DATA
+        if not os.path.exists(to_save_folder):
+            os.mkdir(to_save_folder)
+        data.rename(columns={"Hugo_Symbol": "PATIENT_ID"}, inplace=True)
+        if "data_clinical_patient" in file:
+            data = data.set_index(data.columns[0])
+            if not os.path.exists(LABELS):
+                os.mkdir(LABELS)
+            data = pd.read_csv(f"{BASE_DATAPATH}/{file}", sep="\t")
+            data = data.apply(encoder.fit_transform)
+            data["CLAUDIN_SUBTYPE"].to_csv(f"{LABELS}/labels.csv", index=False)
+        else:
+            patient_id = data["PATIENT_ID"]
+            data.drop("PATIENT_ID", axis=1, inplace=True)
+            data = data.T
+            data.columns = patient_id.values
+        data.to_parquet(f"{to_save_folder}/{file.split('.')[0]}.parquet", index=False)
 
 
-pickle_to_csv()
+pickle_txt_to_parquet()
 
 labels = None
 for file in os.listdir(LABELS):

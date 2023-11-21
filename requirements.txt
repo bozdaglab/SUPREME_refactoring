@@ -1,4 +1,5 @@
 Boruta
+fastparquet
 feature_engine
 lightgbm
 mlxtend
@@ -6,9 +7,10 @@ numpy==1.23.3
 pandas==1.5.3
 pathlib
 pre-commit==2.15.0
+pyarrow
 pytest==5.4.1
 python-dotenv==0.19.1
-xgboost
+python-dotenv==0.19.1
 torch
 torch_geometric
-python-dotenv==0.19.1
+xgboost

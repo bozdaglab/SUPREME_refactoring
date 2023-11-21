@@ -2,7 +2,7 @@ import logging
 
 import pandas as pd
 from set_logging import set_log_config
-from settings import IMPUTER_NAME_SUBSET, IMPUTER_NAME_WHOLE
+from settings import IMPUTER_NAME_SUBSET
 
 # from sklearn.experimental import enable_iterative_imputer
 from sklearn.impute import IterativeImputer, KNNImputer
@@ -13,10 +13,11 @@ set_log_config()
 logger = logging.getLogger()
 
 
-def pre_processing(data: pd.DataFrame) -> pd.DataFrame:
+def pre_processing(data: pd.DataFrame, normalize: bool = False) -> pd.DataFrame:
     data = drop_columns(data=data)
     data = handle_missing(data=data)
-    data = normalization(data=data)
+    if normalize:
+        data = normalization(data=data)
     return data.reset_index(drop=True)
 
 
@@ -46,15 +47,8 @@ def load_missing_method(imputer_name):
 
 
 def handle_missing(data: pd.DataFrame) -> pd.DataFrame:
-    if sum(data.isna().sum()) == 0:
-        return data
     cols = data.columns
     sub_dataset = pd.DataFrame(columns=cols)
     imputer_1 = load_missing_method(IMPUTER_NAME_SUBSET)
-    try:
-        new_data = pd.DataFrame(imputer_1.fit_transform(data), columns=cols)
-        sub_dataset = pd.concat([sub_dataset, new_data])
-    except:
-        imputer_2 = load_missing_method(IMPUTER_NAME_WHOLE)
-        sub_dataset = pd.DataFrame(imputer_2.fit_transform(sub_dataset), columns=cols)
-    return sub_dataset
+    new_data = pd.DataFrame(imputer_1.fit_transform(data), columns=cols)
+    return pd.concat([sub_dataset, new_data])

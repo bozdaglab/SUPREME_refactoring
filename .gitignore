@@ -10,3 +10,4 @@ env/
 lib.egg-info
 # *.txt
 train_*
+data/

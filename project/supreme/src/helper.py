@@ -72,13 +72,13 @@ def get_stat_methos(stat_method: str):
 
 def similarity_matrix_generation():
     # parqua dataset, parallel
-    if os.path.exists(EDGES):
-        return
-    os.mkdir(EDGES)
+    if not os.path.exists(EDGES):
+        os.mkdir(EDGES)
     for file in os.listdir(DATA):
         correlation_dictionary = defaultdict()
-        data = pd.read_csv(DATA / file)
-        data = pre_processing(data=data)
+        data = pd.read_csv(DATA / file).head(100)
+        if sum(data.isna().sum()):
+            data = pre_processing(data=data)
         # data = data.dropna(inplace=True)
         stat_model = get_stat_methos(STAT_METHOD)
         for ind_i, patient_1 in data.iterrows():
@@ -93,4 +93,4 @@ def similarity_matrix_generation():
         pd.DataFrame(
             correlation_dictionary.values(),
             columns=["Patient_1", "Patient_2", "Similarity Score"],
-        ).to_csv(EDGES / f"similarity_{file}")
+        ).to_csv(EDGES / f"similarity_{file}", index=False)
