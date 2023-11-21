@@ -3,15 +3,16 @@ import os
 import pickle
 import time
 import warnings
+from collections import defaultdict
 from itertools import combinations
 from typing import List
 
 import pandas as pd
 from dotenv import find_dotenv, load_dotenv
-from helper import random_split, similarity_matrix_generation
+from helper import random_split, set_same_users, similarity_matrix_generation
 from node_generation import node_embedding_generation, node_feature_generation
 from set_logging import set_log_config
-from settings import BASE_DATAPATH, DATA, EDGES, EMBEDDINGS, LABELS, LEARNING, UNNAMED
+from settings import BASE_DATAPATH, DATA, EDGES, EMBEDDINGS, LABELS, LEARNING
 from sklearn.preprocessing import LabelEncoder
 from train_mls import train_ml_model
 
@@ -23,9 +24,6 @@ warnings.filterwarnings("ignore", category=FutureWarning)
 
 if not os.path.exists(BASE_DATAPATH):
     raise FileNotFoundError(f"no such a director {BASE_DATAPATH}")
-
-if not os.path.exists(EMBEDDINGS):
-    os.makedirs(EMBEDDINGS)
 
 
 def combine_trails() -> List[List[int]]:
@@ -43,15 +41,33 @@ def pickle_txt_to_parquet():
     and convert them to csv with the same name
     """
     encoder = LabelEncoder()
-    for file in os.listdir(BASE_DATAPATH):
+    sample_data = defaultdict()
+    label = ""
+    users = defaultdict()
+    list_files = os.listdir(BASE_DATAPATH)
+    if all(file_name in os.listdir(BASE_DATAPATH) for file_name in ["data", "labels"]):
+        for file in os.listdir(DATA):
+            data = pd.read_pickle(f"{DATA}/{file}")
+            sample_data[file] = data
+            if "PATIENT_ID" in data.columns:
+                patient_id = data["PATIENT_ID"]
+            else:
+                patient_id = data.index
+            users[file] = patient_id
+        for file in os.listdir(LABELS):
+            label = pd.read_pickle(f"{LABELS}/{file}")
+        return sample_data, users, label
+
+    for file in list_files:
         if file.endswith(".pkl"):
             with open(f"{BASE_DATAPATH}/{file}", "rb") as pkl_file:
                 data = pickle.load(pkl_file)
-        elif file.endswith(".txt"):
+        if file.endswith(".txt"):
             with open(f"{BASE_DATAPATH}/{file}", "rb") as txt_file:
                 data = pd.read_csv(txt_file, sep="\t")
-
-        if "data_cna" in file:
+        else:
+            continue
+        if "data_cna" in file or "data_mrna" in file:
             data.drop("Entrez_Gene_Id", axis=1, inplace=True)
         if "edges_" in file:
             to_save_folder = EDGES
@@ -61,40 +77,38 @@ def pickle_txt_to_parquet():
             to_save_folder = DATA
         if not os.path.exists(to_save_folder):
             os.mkdir(to_save_folder)
-        data.rename(columns={"Hugo_Symbol": "PATIENT_ID"}, inplace=True)
         if "data_clinical_patient" in file:
+            patient_id = data["PATIENT_ID"]
             data = data.set_index(data.columns[0])
             if not os.path.exists(LABELS):
                 os.mkdir(LABELS)
-            data = pd.read_csv(f"{BASE_DATAPATH}/{file}", sep="\t")
             data = data.apply(encoder.fit_transform)
-            data["CLAUDIN_SUBTYPE"].to_csv(f"{LABELS}/labels.csv", index=False)
+            data["CLAUDIN_SUBTYPE"].to_pickle(f"{LABELS}/labels.pkl")
+            label = data["CLAUDIN_SUBTYPE"]
         else:
-            patient_id = data["PATIENT_ID"]
-            data.drop("PATIENT_ID", axis=1, inplace=True)
+            hugo_symbol = data["Hugo_Symbol"]
+            data.drop("Hugo_Symbol", axis=1, inplace=True)
             data = data.T
-            data.columns = patient_id.values
-        data.to_parquet(f"{to_save_folder}/{file.split('.')[0]}.parquet", index=False)
+            data.columns = hugo_symbol.values
+            patient_id = data.index
+        users[file] = patient_id
+        sample_data[file.split(".")[0]] = data
+        data.to_pickle(f"{to_save_folder}/{file.split('.')[0]}.pkl")
+    return sample_data, users, label
 
 
-pickle_txt_to_parquet()
-
-labels = None
-for file in os.listdir(LABELS):
-    if not file:
-        break
-    labels = pd.read_csv(f"{LABELS}/{file}")
-    if UNNAMED in labels:
-        labels = labels.drop(UNNAMED, axis=1)
+sample_data, users, label = pickle_txt_to_parquet()
 
 
 start = time.time()
-
-similarity_matrix_generation()
+new_dataset = set_same_users(sample_data=sample_data, users=users)
+final_correlation = similarity_matrix_generation(new_dataset=new_dataset)
 logger.info("SUPREME is running..")
-new_x = node_feature_generation(labels=labels)
+new_x = node_feature_generation(labels=label, new_dataset=new_dataset)
 train_valid_idx, test_idx = random_split(new_x)
-node_embedding_generation(new_x=new_x, labels=labels)
+embeddings = node_embedding_generation(
+    new_x=new_x, labels=label, final_correlation=final_correlation
+)
 start2 = time.time()
 
 logger.info(
@@ -108,9 +122,10 @@ for trials in range(len(trial_combs)):
     final_result = train_ml_model(
         trial_combs=trial_combs,
         trials=trials,
-        labels=labels,
+        labels=label,
         train_valid_idx=train_valid_idx,
         test_idx=test_idx,
+        embeddings=embeddings,
     )
     logger.info(f"Combination {trials}, selected parameters:")
     for key, res in final_result.items():

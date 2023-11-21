@@ -14,11 +14,22 @@ logger = logging.getLogger()
 
 
 def pre_processing(data: pd.DataFrame, normalize: bool = False) -> pd.DataFrame:
-    data = drop_columns(data=data)
+    # data = duplication(data=data)
+    # data = drop_columns(data=data)
     data = handle_missing(data=data)
     if normalize:
         data = normalization(data=data)
     return data.reset_index(drop=True)
+
+
+def duplication(data: pd.DataFrame) -> pd.DataFrame:
+    duplicated_columns = data.columns[data.columns.duplicated()]
+    if not any(duplicated_columns):
+        return data
+    for column in duplicated_columns:
+        for idx, (col, _) in enumerate(data[column].items()):
+            data.rename(columns={col: f"{col}_{idx}"}, inplace=True)
+    return data
 
 
 def drop_columns(data, thr: float = 0.90) -> pd.DataFrame:

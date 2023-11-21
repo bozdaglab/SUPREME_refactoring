@@ -1,6 +1,6 @@
 import os
-from collections import defaultdict
-from typing import List, Tuple
+from collections import Counter, defaultdict
+from typing import Dict, List, Tuple
 
 import numpy as np
 import pandas as pd
@@ -9,8 +9,15 @@ import xgboost as xgb
 from boruta import BorutaPy
 from pre_processings import pre_processing
 from scipy.stats import pearsonr, spearmanr
-from settings import DATA, EDGES, STAT_METHOD
+from settings import EDGES, STAT_METHOD
 from torch import Tensor
+
+
+def search_dictionary(methods_features: Dict, thr: int = 2) -> List[str]:
+    count_features = Counter()
+    for features in methods_features.values():
+        count_features.update(features)
+    return [feat for feat, val in count_features.items() if val > thr]
 
 
 def ratio(new_x: torch) -> List[int]:
@@ -70,19 +77,33 @@ def get_stat_methos(stat_method: str):
         raise KeyError("Please check your stat model")
 
 
-def similarity_matrix_generation():
+def set_same_users(sample_data: Dict, users: Dict) -> Dict:
+    new_dataset = defaultdict()
+    shared_users = search_dictionary(users, len(users) - 1)
+    shared_users = sorted(shared_users)[0:100]
+    for file_name, data in sample_data.items():
+        new_dataset[file_name] = data[data.index.isin(shared_users)]
+    return new_dataset
+
+
+def similarity_matrix_generation(new_dataset: Dict) -> Dict:
     # parqua dataset, parallel
+    final_correlation = defaultdict()
     if not os.path.exists(EDGES):
         os.mkdir(EDGES)
-    for file in os.listdir(DATA):
+    file_names = os.listdir(EDGES)
+    if file_names:
+        for file in file_names:
+            final_correlation[file] = pd.read_pickle(f"{EDGES}/{file}")
+        return final_correlation
+
+    for file_name, data in new_dataset.items():
         correlation_dictionary = defaultdict()
-        data = pd.read_csv(DATA / file).head(100)
         if sum(data.isna().sum()):
             data = pre_processing(data=data)
-        # data = data.dropna(inplace=True)
         stat_model = get_stat_methos(STAT_METHOD)
-        for ind_i, patient_1 in data.iterrows():
-            for ind_j, patient_2 in data[ind_i + 1 :].iterrows():
+        for ind_i, patient_1 in enumerate(data.iloc):
+            for ind_j, patient_2 in enumerate(data[ind_i + 1 :].iloc):
                 correlation_dictionary[f"{ind_i}_{ind_j}"] = {
                     "Patient_1": ind_i,
                     "Patient_2": ind_j,
@@ -90,7 +111,10 @@ def similarity_matrix_generation():
                         patient_1.values, patient_2.values
                     ).statistic,
                 }
+        final_correlation[file_name] = correlation_dictionary
+
         pd.DataFrame(
             correlation_dictionary.values(),
             columns=["Patient_1", "Patient_2", "Similarity Score"],
-        ).to_csv(EDGES / f"similarity_{file}", index=False)
+        ).to_pickle(EDGES / f"similarity_{file_name}")
+    return final_correlation

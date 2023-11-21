@@ -1,7 +1,8 @@
 import os
 import statistics
+from collections import defaultdict
 from itertools import product
-from typing import Optional
+from typing import Dict, Optional
 
 import numpy as np
 import pandas as pd
@@ -9,8 +10,6 @@ import torch
 from helper import select_boruta
 from selected_models import load_model, select_model, select_optimizer
 from settings import (
-    DATA,
-    EDGES,
     EMBEDDINGS,
     FEATURE_SELECTION_PER_NETWORK,
     HIDDEN_SIZE,
@@ -21,7 +20,6 @@ from settings import (
     OPTIM,
     OPTIONAL_FEATURE_SELECTION,
     PATIENCE,
-    UNNAMED,
     X_TIME2,
 )
 from torch import Tensor
@@ -29,7 +27,9 @@ from torch import Tensor
 DEVICE = torch.device("cpu")
 
 
-def node_feature_generation(labels: Optional[pd.DataFrame]) -> Tensor:
+def node_feature_generation(
+    labels: Optional[pd.DataFrame], new_dataset: Dict
+) -> Tensor:
     """
     Load features from each omic separately, apply feature selection if needed,
     and contact them together
@@ -44,11 +44,7 @@ def node_feature_generation(labels: Optional[pd.DataFrame]) -> Tensor:
         Concatenated features from different omics file
     """
     is_first = True
-    for file in os.listdir(DATA):
-        feat = pd.read_csv(f"{DATA}/{file}")
-        # read as index_col[0] or save it with index=False.
-        if UNNAMED in feat.columns:
-            feat = feat.drop(UNNAMED, axis=1)
+    for _, feat in new_dataset.items():
         if not any(
             FEATURE_SELECTION_PER_NETWORK
         ):  # any does not make sense. We need it seperate for each dataset
@@ -70,7 +66,8 @@ def node_feature_generation(labels: Optional[pd.DataFrame]) -> Tensor:
 def node_embedding_generation(
     new_x: Tensor,
     labels: Optional[pd.DataFrame],
-) -> None:
+    final_correlation: Dict,
+) -> Dict:
     """
     This function loads edges, turns SUPREME to supervised or unsupervised
     and generates embeddings for each omic
@@ -85,13 +82,18 @@ def node_embedding_generation(
     Return:
         Generate embeddings for each omic
     """
-    if not os.path.exists(EMBEDDINGS / LEARNING):
-        os.mkdir(EMBEDDINGS / LEARNING)
+    embeddings = defaultdict()
+    emb_path = EMBEDDINGS / LEARNING
+    if not os.path.exists(emb_path):
+        os.mkdir(emb_path)
+    embeddings_file = os.listdir(emb_path)
+    if embeddings_file:
+        for name in embeddings_file:
+            embeddings[name] = pd.read_pickle(f"{emb_path}/{name}")
+        return embeddings
+
     learning_model = load_model(new_x=new_x, labels=labels)
-    for edge_file in os.listdir(EDGES):
-        edge_index = pd.read_csv(f"{EDGES}/{edge_file}")
-        if UNNAMED in edge_index.columns:
-            edge_index.drop(UNNAMED, axis=1, inplace=True)
+    for name, edge_index in final_correlation.items():
         best_ValidLoss = np.Inf
         for learning_rate, hid_size in product(LEARNING_RATE, HIDDEN_SIZE):
             av_valid_losses = []
@@ -124,8 +126,10 @@ def node_embedding_generation(
 
                 selected_emb = this_emb
 
-        embedding_path = f"{EMBEDDINGS}/{LEARNING}/{edge_file.split('.csv')[0]}"
-        pd.DataFrame(selected_emb).to_csv(f"{embedding_path}.csv", index=False)
+        embedding_path = f"{EMBEDDINGS}/{LEARNING}/{name}"
+        pd.DataFrame(selected_emb).to_pickle(f"{embedding_path}.pkl")
+        embeddings[name] = selected_emb
+        return embeddings
 
 
 def add_row_features(emb: Tensor, is_first: bool = True) -> Tensor:
@@ -145,7 +149,7 @@ def add_row_features(emb: Tensor, is_first: bool = True) -> Tensor:
         Concatenation of row features and embeddings
     """
     for addFeatures in os.listdir(EMBEDDINGS / LEARNING):
-        features = pd.read_csv(f"{EMBEDDINGS}/{LEARNING}/{addFeatures}")
+        features = pd.read_pickle(f"{EMBEDDINGS}/{LEARNING}/{addFeatures}")
 
         if is_first:
             allx = torch.tensor(features.values, device=DEVICE).float()

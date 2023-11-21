@@ -30,6 +30,7 @@ def train_ml_model(
     labels: pd.DataFrame,
     train_valid_idx: Tensor,
     test_idx: Tensor,
+    embeddings: Dict,
 ):
 
     NODE_NETWORKS2 = [os.listdir(EMBEDDINGS / LEARNING)[i] for i in trial_combs[trials]]
