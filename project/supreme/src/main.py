@@ -79,10 +79,13 @@ def pickle_txt_to_parquet():
             os.mkdir(to_save_folder)
         if "data_clinical_patient" in file:
             patient_id = data["PATIENT_ID"]
-            data = data.set_index(data.columns[0])
+            data.drop("PATIENT_ID", axis=1, inplace=True)
             if not os.path.exists(LABELS):
                 os.mkdir(LABELS)
+
             data = data.apply(encoder.fit_transform)
+            data["PATIENT_ID"] = patient_id
+            data = data.set_index("PATIENT_ID")
             data["CLAUDIN_SUBTYPE"].to_pickle(f"{LABELS}/labels.pkl")
             label = data["CLAUDIN_SUBTYPE"]
         else:

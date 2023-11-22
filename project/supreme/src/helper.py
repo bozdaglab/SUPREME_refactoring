@@ -10,6 +10,7 @@ from boruta import BorutaPy
 from pre_processings import pre_processing
 from scipy.stats import pearsonr, spearmanr
 from settings import EDGES, STAT_METHOD
+from sklearn.preprocessing import LabelEncoder
 from torch import Tensor
 
 
@@ -80,9 +81,12 @@ def get_stat_methos(stat_method: str):
 def set_same_users(sample_data: Dict, users: Dict) -> Dict:
     new_dataset = defaultdict()
     shared_users = search_dictionary(users, len(users) - 1)
-    shared_users = sorted(shared_users)[0:100]
+    shared_users = sorted(shared_users)
+    shared_users_encoded = LabelEncoder().fit_transform(shared_users)
     for file_name, data in sample_data.items():
-        new_dataset[file_name] = data[data.index.isin(shared_users)]
+        new_dataset[file_name] = data[data.index.isin(shared_users)].set_index(
+            shared_users_encoded
+        )
     return new_dataset
 
 
@@ -102,8 +106,8 @@ def similarity_matrix_generation(new_dataset: Dict) -> Dict:
         if sum(data.isna().sum()):
             data = pre_processing(data=data)
         stat_model = get_stat_methos(STAT_METHOD)
-        for ind_i, patient_1 in enumerate(data.iloc):
-            for ind_j, patient_2 in enumerate(data[ind_i + 1 :].iloc):
+        for ind_i, patient_1 in data.iterrows():
+            for ind_j, patient_2 in data[ind_i + 1 :].iterrows():
                 correlation_dictionary[f"{ind_i}_{ind_j}"] = {
                     "Patient_1": ind_i,
                     "Patient_2": ind_j,
@@ -116,5 +120,5 @@ def similarity_matrix_generation(new_dataset: Dict) -> Dict:
         pd.DataFrame(
             correlation_dictionary.values(),
             columns=["Patient_1", "Patient_2", "Similarity Score"],
-        ).to_pickle(EDGES / f"similarity_{file_name}")
+        ).to_pickle(EDGES / f"similarity_{file_name}.pkl")
     return final_correlation
