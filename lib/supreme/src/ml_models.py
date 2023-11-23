@@ -1,5 +1,5 @@
 import logging
-from typing import Optional
+from typing import Optional, Tuple
 
 import lightgbm as lgb
 import numpy as np
@@ -17,7 +17,9 @@ logger = logging.getLogger(__name__)
 
 
 class MLModels:
-    def __init__(self, model, x_train, y_train: Optional[pd.DataFrame] = None):
+    def __init__(
+        self, model: str, x_train: pd.DataFrame, y_train: Optional[pd.DataFrame] = None
+    ):
         self.model = model
         self.x_train = x_train
         self.y_train = y_train
@@ -35,8 +37,20 @@ class MLModels:
         }
         try:
             return models.get(self.model)()
-        except:
-            pass
+        except ValueError:
+            raise Exception
+
+    def train_classifier(self) -> Tuple:
+        """
+        Train a classifier
+
+        """
+        try:
+            classfier = self.train_ml_model_factory()
+            return classfier.fit(self.x_train, self.y_train)  # .best_estimator_
+
+        except (TypeError, ValueError):
+            return None
 
     def MLP(self):
         params = {
@@ -171,25 +185,24 @@ class MLModels:
         )
 
     def RF(self):
-        max_depth = [int(x) for x in np.linspace(10, 110, num=11)]
-        max_depth.append(None)
-        params = {
-            "n_estimators": [int(x) for x in np.linspace(start=200, stop=2000, num=100)]
-        }
-        search = RandomizedSearchCV(
-            estimator=RandomForestClassifier(),
-            return_train_score=True,
-            scoring="f1_macro",
-            param_distributions=params,
-            cv=4,
-            n_iter=X_TIME,
-            verbose=0,
-        )
-        search.fit(self.x_train, self.y_train)
-        return (
-            RandomForestClassifier(n_estimators=search.best_params_["n_estimators"]),
-            search,
-        )
+        # max_depth = [int(x) for x in np.linspace(10, 110, num=11)]
+        # max_depth.append(None)
+        # params = {
+        #     "n_estimators": [int(x) for x in np.linspace(start=200, stop=2000, num=100)]
+        # }
+        # search = RandomizedSearchCV(
+        #     estimator=RandomForestClassifier(),
+        #     return_train_score=True,
+        #     scoring="f1_macro",
+        #     param_distributions=params,
+        #     cv=4,
+        #     n_iter=X_TIME,
+        #     verbose=0,
+        # )
+        # search.fit(self.x_train, self.y_train)
+        return RandomForestClassifier(n_estimators=10)  # ,
+        # search,
+        # )
 
     def SVM(self):
         params = {

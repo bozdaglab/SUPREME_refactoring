@@ -239,3 +239,17 @@ class EncoderEntireInput:
         emb, _ = self.encoder(data)
         dec_out = self.decoder(emb)
         return self.criterion(dec_out, data.x), emb
+
+        # elif MASKING: # this should goes to prediction
+        #     # mask some edges and used those as negative values
+        #     num_nodes = maybe_num_nodes(data.edge_index)
+        #     mask_edges = torch.rand(edge_index.size(1)) < 0.5
+        #     non_mask_edges = ~mask_edges
+        #     neg_edge_labels = data.edge_index.clone()
+        #     neg_edge_labels[0:mask_edges] = torch.randint(
+        #         num_nodes, (mask_edges.sum(),), device=DEVICE
+        #     )
+        #     neg_edge_labels[0:non_mask_edges] = torch.randint(
+        #         num_nodes, (non_mask_edges.sum(),), device=DEVICE
+        #     )
+        #     data.neg_edge_labels = neg_edge_labels

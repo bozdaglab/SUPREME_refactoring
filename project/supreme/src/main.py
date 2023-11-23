@@ -35,14 +35,14 @@ def combine_trails() -> List[List[int]]:
     # return [combinations(NODE_NETWORKS, i) for i in range(1, len(NODE_NETWORKS)+1)]
 
 
-def pickle_txt_to_parquet():
+def txt_to_pickle():
     """
-    Search in the given repository, and load pickle files, if exist,
-    and convert them to csv with the same name
+    Search in the given repository, and load pickle/txt files, and generate
+    labels, and input data
     """
     encoder = LabelEncoder()
     sample_data = defaultdict()
-    label = ""
+    labels = ""
     users = defaultdict()
     list_files = os.listdir(BASE_DATAPATH)
     if all(file_name in os.listdir(BASE_DATAPATH) for file_name in ["data", "labels"]):
@@ -55,8 +55,8 @@ def pickle_txt_to_parquet():
                 patient_id = data.index
             users[file] = patient_id
         for file in os.listdir(LABELS):
-            label = pd.read_pickle(f"{LABELS}/{file}")
-        return sample_data, users, label
+            labels = pd.read_pickle(f"{LABELS}/{file}")
+        return sample_data, users, labels
 
     for file in list_files:
         if file.endswith(".pkl"):
@@ -87,7 +87,7 @@ def pickle_txt_to_parquet():
             data["PATIENT_ID"] = patient_id
             data = data.set_index("PATIENT_ID")
             data["CLAUDIN_SUBTYPE"].to_pickle(f"{LABELS}/labels.pkl")
-            label = data["CLAUDIN_SUBTYPE"]
+            labels = data["CLAUDIN_SUBTYPE"]
         else:
             hugo_symbol = data["Hugo_Symbol"]
             data.drop("Hugo_Symbol", axis=1, inplace=True)
@@ -97,20 +97,22 @@ def pickle_txt_to_parquet():
         users[file] = patient_id
         sample_data[file.split(".")[0]] = data
         data.to_pickle(f"{to_save_folder}/{file.split('.')[0]}.pkl")
-    return sample_data, users, label
+    return sample_data, users, labels
 
 
-sample_data, users, label = pickle_txt_to_parquet()
+sample_data, users, labels = txt_to_pickle()
 
 
 start = time.time()
-new_dataset = set_same_users(sample_data=sample_data, users=users)
+new_dataset, labels = set_same_users(
+    sample_data=sample_data, users=users, labels=labels
+)
 final_correlation = similarity_matrix_generation(new_dataset=new_dataset)
 logger.info("SUPREME is running..")
-new_x = node_feature_generation(labels=label, new_dataset=new_dataset)
+new_x = node_feature_generation(new_dataset=new_dataset, labels=labels)
 train_valid_idx, test_idx = random_split(new_x)
 embeddings = node_embedding_generation(
-    new_x=new_x, labels=label, final_correlation=final_correlation
+    new_x=new_x, labels=labels, final_correlation=final_correlation
 )
 start2 = time.time()
 
@@ -125,7 +127,7 @@ for trials in range(len(trial_combs)):
     final_result = train_ml_model(
         trial_combs=trial_combs,
         trials=trials,
-        labels=label,
+        labels=labels,
         train_valid_idx=train_valid_idx,
         test_idx=test_idx,
         embeddings=embeddings,

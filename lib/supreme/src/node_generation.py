@@ -7,11 +7,11 @@ from typing import Dict, Optional
 import numpy as np
 import pandas as pd
 import torch
-from helper import select_boruta
+from feature_selections import select_features
+from helper import row_col_ratio
 from selected_models import load_model, select_model, select_optimizer
 from settings import (
     EMBEDDINGS,
-    FEATURE_SELECTION_PER_NETWORK,
     HIDDEN_SIZE,
     LEARNING,
     LEARNING_RATE,
@@ -27,9 +27,7 @@ from torch import Tensor
 DEVICE = torch.device("cpu")
 
 
-def node_feature_generation(
-    labels: Optional[pd.DataFrame], new_dataset: Dict
-) -> Tensor:
+def node_feature_generation(new_dataset: Dict, labels: Dict) -> Tensor:
     """
     Load features from each omic separately, apply feature selection if needed,
     and contact them together
@@ -45,14 +43,12 @@ def node_feature_generation(
     """
     is_first = True
     for _, feat in new_dataset.items():
-        if not any(
-            FEATURE_SELECTION_PER_NETWORK
-        ):  # any does not make sense. We need it seperate for each dataset
-            values = feat.values
+        if row_col_ratio(feat):
+            # feat = feat[feat.columns[0:30]]
+            feat = select_features(application_train=feat, labels=labels)
+            values = torch.tensor(feat.values, device=DEVICE)
         else:
-            topx = select_boruta(X=feat, y=labels)
-            topx = np.array(topx)
-            values = torch.tensor(topx.T, device=DEVICE)
+            values = feat.values
         if is_first:
             new_x = torch.tensor(values, device=DEVICE).float()
             is_first = False
@@ -83,6 +79,8 @@ def node_embedding_generation(
         Generate embeddings for each omic
     """
     embeddings = defaultdict()
+    if not os.path.exists(EMBEDDINGS):
+        os.mkdir(EMBEDDINGS)
     emb_path = EMBEDDINGS / LEARNING
     if not os.path.exists(emb_path):
         os.mkdir(emb_path)
@@ -118,6 +116,8 @@ def node_embedding_generation(
                         patience_count += 1
                     if epoch >= MIN_EPOCHS and patience_count >= PATIENCE:
                         break
+                # if loss is nan, call the function again and change the pos, neg samples
+                # or dont consider that modality for now in the process
                 av_valid_losses.append(min_valid_loss.item())
 
             av_valid_loss = round(statistics.median(av_valid_losses), 3)
@@ -129,7 +129,7 @@ def node_embedding_generation(
         embedding_path = f"{EMBEDDINGS}/{LEARNING}/{name}"
         pd.DataFrame(selected_emb).to_pickle(f"{embedding_path}.pkl")
         embeddings[name] = selected_emb
-        return embeddings
+    return embeddings
 
 
 def add_row_features(emb: Tensor, is_first: bool = True) -> Tensor:

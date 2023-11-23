@@ -11,6 +11,7 @@ pyarrow
 pytest==5.4.1
 python-dotenv==0.19.1
 python-dotenv==0.19.1
+sklearn-genetic
 torch
 torch_geometric
 xgboost

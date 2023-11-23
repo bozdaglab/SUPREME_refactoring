@@ -59,7 +59,5 @@ def load_missing_method(imputer_name):
 
 def handle_missing(data: pd.DataFrame) -> pd.DataFrame:
     cols = data.columns
-    sub_dataset = pd.DataFrame(columns=cols)
     imputer_1 = load_missing_method(IMPUTER_NAME_SUBSET)
-    new_data = pd.DataFrame(imputer_1.fit_transform(data), columns=cols)
-    return pd.concat([sub_dataset, new_data])
+    return pd.DataFrame(imputer_1.fit_transform(data), columns=cols)

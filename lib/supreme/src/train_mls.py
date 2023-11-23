@@ -35,7 +35,7 @@ def train_ml_model(
 
     NODE_NETWORKS2 = [os.listdir(EMBEDDINGS / LEARNING)[i] for i in trial_combs[trials]]
     if len(NODE_NETWORKS2) == 1:
-        emb = pd.read_csv(f"{EMBEDDINGS}/{LEARNING}/{NODE_NETWORKS2[0]}")
+        emb = embeddings[NODE_NETWORKS2[0]]
     else:
         for netw_base in NODE_NETWORKS2:
             emb = pd.DataFrame()
