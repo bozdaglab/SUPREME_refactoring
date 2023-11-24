@@ -4,7 +4,7 @@ from typing import Optional, Union
 import numpy as np
 import pandas as pd
 import torch
-from helper import masking_indexes, random_split
+from helper import masking_indexes, pos_neg, random_split
 from learning_types import LearningTypes, OptimizerType
 from module import (
     SUPREME,
@@ -23,9 +23,10 @@ from settings import (
     ENCODERINPRODUCT,
     LEARNING,
     LINKPREDICTION,
-    MASKING,
     NODE2VEC,
+    SIMILARITY_BASED,
     SPARSE,
+    TRAIN_TEST,
     WALK_LENGHT,
     WALK_PER_NODE,
     P,
@@ -36,6 +37,7 @@ from torch import Tensor
 from torch.nn import Module
 from torch_geometric.data import Data
 from torch_geometric.nn import Node2Vec
+from torch_geometric.utils import negative_sampling, train_test_split_edges
 from torch_geometric.utils.num_nodes import maybe_num_nodes
 
 DEVICE = torch.device("cpu")
@@ -96,7 +98,7 @@ class GCNUnsupervised:
     def __init__(self, new_x: Tensor) -> None:
         self.new_x = new_x
 
-    def prepare_data(self, edge_index: pd.DataFrame) -> Data:
+    def prepare_data(self, edge_index: pd.DataFrame, thr: float = 0.60) -> Data:
         """
         Create a data object by adding features, edge_index, edge_attr.
         For unsupervised GCN, this function
@@ -111,6 +113,13 @@ class GCNUnsupervised:
             A data object ready to pass to GCN
         """
         train_valid_idx, test_idx = random_split(new_x=self.new_x)
+        # temporary, remove it after fresh run (generate fresh similarity)
+        f = [idx for idx, val in enumerate(edge_index["Similarity Score"]) if val > 0.0]
+        edge_index = edge_index[edge_index.index.isin(f)].reset_index(drop=True)
+
+        edge_index["links"] = [
+            1 if val > thr else 0 for val in edge_index["Similarity Score"]
+        ]
         data = make_data(new_x=self.new_x, edge_index=edge_index)
         if NODE2VEC:
             node2vec = Node2Vec(
@@ -126,19 +135,18 @@ class GCNUnsupervised:
             pos, neg = node2vec.sample([10, 15])
             data.pos_edge_labels = torch.tensor(pos.T, device=DEVICE).long()
             data.neg_edge_labels = torch.tensor(neg.T, device=DEVICE).long()
-        elif MASKING:
-            # mask some edges and used those as negative values
-            num_nodes = maybe_num_nodes(data.edge_index)
-            mask_edges = torch.rand(edge_index.size(1)) < 0.5
-            non_mask_edges = ~mask_edges
-            neg_edge_labels = data.edge_index.clone()
-            neg_edge_labels[0:mask_edges] = torch.randint(
-                num_nodes, (mask_edges.sum(),), device=DEVICE
+        elif SIMILARITY_BASED:
+
+            data.pos_edge_labels = pos_neg(edge_index, "links", 1)
+            data.neg_edge_labels = pos_neg(edge_index, "links", 0)
+        elif TRAIN_TEST:
+            data.num_nodes = maybe_num_nodes(data.edge_index)
+            data = train_test_split_edges(data=data)
+        else:
+            data.pos_edge_labels = pos_neg(edge_index, "links", 1)
+            data.neg_edge_labels = negative_sampling(
+                data.pos_edge_labels, self.new_x.size(0)
             )
-            neg_edge_labels[0:non_mask_edges] = torch.randint(
-                num_nodes, (non_mask_edges.sum(),), device=DEVICE
-            )
-            data.neg_edge_labels = neg_edge_labels
         return train_test_valid(
             data=data, train_valid_idx=train_valid_idx, test_idx=test_idx
         )
@@ -231,9 +239,14 @@ def train_test_valid(
     data.train_mask = torch.tensor(
         masking_indexes(data=data, indexes=train_idx), device=DEVICE
     )
-    data.test_mask = torch.tensor(
-        masking_indexes(data=data, indexes=test_idx), device=DEVICE
-    )
+    try:
+        data.test_mask = torch.tensor(
+            masking_indexes(data=data, indexes=test_idx), device=DEVICE
+        )
+    except KeyError:
+        data.test_mask = torch.tensor(
+            masking_indexes(data=data, indexes=test_idx.indices), device=DEVICE
+        )
     return data
 
 

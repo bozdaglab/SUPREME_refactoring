@@ -17,6 +17,22 @@ else:
 OPTIONAL_FEATURE_SELECTION = bool(
     strtobool(os.environ.get("OPTIONAL_FEATURE_SELECTION"))
 )
+NUMBER_FEATURES = [20]
+X_ITER = 20
+SELECTION_METHOD = [
+    "pearson",
+    # "lasso",
+    # "RFE",
+    # "SelectFromModel",
+    # "SequentialFeatureSelector",
+    # "SelectBySingleFeaturePerformance",
+    # "SelectByShuffling",
+    # "GeneticSelectionCV",
+    # "BorutaPy",
+]
+MODELS_B = ["RF"]
+
+
 LOGGING_LEVEL = os.environ.get("LOGGING_LEVEL")
 IMPUTER_NAME_SUBSET = os.environ.get("IMPUTER_NAME_SUBSET")
 IMPUTER_NAME_WHOLE = os.environ.get("IMPUTER_NAME_WHOLE")
@@ -30,6 +46,8 @@ HIDDEN_SIZE = json.loads(os.environ.get("HIDDEN_SIZE"))
 X_TIME = int(os.environ.get("X_TIME"))
 DISCRIMINATOR = bool(os.environ.get("DISCRIMINATOR"))
 NODE2VEC = bool(os.environ.get("NODE2VEC"))
+SIMILARITY_BASED = bool(os.environ.get("SIMILARITY_BASED"))
+TRAIN_TEST = bool(os.environ.get("TRAIN_TEST"))
 MASKING = bool(os.environ.get("MASKING"))
 LINKPREDICTION = bool(os.environ.get("LINKPREDICTION"))
 ENCODERINPRODUCT = bool(os.environ.get("ENCODERINPRODUCT"))
