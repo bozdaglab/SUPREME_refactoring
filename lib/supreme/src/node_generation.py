@@ -8,7 +8,8 @@ import numpy as np
 import pandas as pd
 import torch
 from feature_selections import select_features
-from helper import row_col_ratio
+from helper import nan_checker, row_col_ratio
+from pre_processings import pre_processing
 from selected_models import load_model, select_model, select_optimizer
 from settings import (
     EMBEDDINGS,
@@ -44,7 +45,9 @@ def node_feature_generation(new_dataset: Dict, labels: Dict) -> Tensor:
     is_first = True
     for _, feat in new_dataset.items():
         if row_col_ratio(feat):
-            # feat = feat[feat.columns[0:30]]
+            if nan_checker:
+                # feat = feat[feat.columns[0:300]]
+                feat = pre_processing(feat)
             feat = select_features(application_train=feat, labels=labels)
             values = torch.tensor(feat.values, device=DEVICE)
         else:

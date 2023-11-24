@@ -98,7 +98,7 @@ class GCNUnsupervised:
     def __init__(self, new_x: Tensor) -> None:
         self.new_x = new_x
 
-    def prepare_data(self, edge_index: pd.DataFrame) -> Data:
+    def prepare_data(self, edge_index: pd.DataFrame, thr: float = 0.60) -> Data:
         """
         Create a data object by adding features, edge_index, edge_attr.
         For unsupervised GCN, this function
@@ -113,6 +113,13 @@ class GCNUnsupervised:
             A data object ready to pass to GCN
         """
         train_valid_idx, test_idx = random_split(new_x=self.new_x)
+        # temporary, remove it after fresh run (generate fresh similarity)
+        f = [idx for idx, val in enumerate(edge_index["Similarity Score"]) if val > 0.0]
+        edge_index = edge_index[edge_index.index.isin(f)].reset_index(drop=True)
+
+        edge_index["links"] = [
+            1 if val > thr else 0 for val in edge_index["Similarity Score"]
+        ]
         data = make_data(new_x=self.new_x, edge_index=edge_index)
         if NODE2VEC:
             node2vec = Node2Vec(
@@ -129,18 +136,16 @@ class GCNUnsupervised:
             data.pos_edge_labels = torch.tensor(pos.T, device=DEVICE).long()
             data.neg_edge_labels = torch.tensor(neg.T, device=DEVICE).long()
         elif SIMILARITY_BASED:
-            # temporary
-            edge_index["links"] = [
-                1 if val > 0.60 else 0 for val in edge_index["Similarity Score"]
-            ]
+
             data.pos_edge_labels = pos_neg(edge_index, "links", 1)
             data.neg_edge_labels = pos_neg(edge_index, "links", 0)
         elif TRAIN_TEST:
             data.num_nodes = maybe_num_nodes(data.edge_index)
             data = train_test_split_edges(data=data)
         else:
+            data.pos_edge_labels = pos_neg(edge_index, "links", 1)
             data.neg_edge_labels = negative_sampling(
-                data.edge_index, self.new_x.size(0)
+                data.pos_edge_labels, self.new_x.size(0)
             )
         return train_test_valid(
             data=data, train_valid_idx=train_valid_idx, test_idx=test_idx

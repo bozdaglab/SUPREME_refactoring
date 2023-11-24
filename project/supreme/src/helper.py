@@ -115,7 +115,7 @@ def drop_rows(application_train: pd.DataFrame, gh: List[str]) -> pd.DataFrame:
     return application_train[gh].reset_index(drop=True)
 
 
-def similarity_matrix_generation(new_dataset: Dict, thr: float = 0.70) -> Dict:
+def similarity_matrix_generation(new_dataset: Dict) -> Dict:
     # parqua dataset, parallel
     final_correlation = defaultdict()
     if not os.path.exists(EDGES):
@@ -136,11 +136,12 @@ def similarity_matrix_generation(new_dataset: Dict, thr: float = 0.70) -> Dict:
                 similarity_score = stat_model(
                     patient_1.values, patient_2.values
                 ).statistic
-                correlation_dictionary[f"{ind_i}_{ind_j}"] = {
-                    "Patient_1": ind_i,
-                    "Patient_2": ind_j,
-                    "links": 1 if similarity_score > thr else 0,
-                }
+                if similarity_score > 0.0:
+                    correlation_dictionary[f"{ind_i}_{ind_j}"] = {
+                        "Patient_1": ind_i,
+                        "Patient_2": ind_j,
+                        "links": similarity_score,
+                    }
         final_correlation[file_name] = correlation_dictionary
 
         pd.DataFrame(
