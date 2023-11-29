@@ -21,3 +21,15 @@ class FeatureSelectionType(Enum):
     SelectByShuffling = auto()
     GeneticSelectionCV = auto()
     BorutaPy = auto
+
+
+class SelectModel(Enum):
+    node2vec = auto()
+    similarity_based = auto()
+    train_test = auto()
+
+
+class SuperUnsuperModel(Enum):
+    discriminator = auto()
+    linkprediction = auto()
+    encoderinproduct = auto()

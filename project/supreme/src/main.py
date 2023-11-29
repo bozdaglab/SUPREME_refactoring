@@ -26,12 +26,16 @@ if not os.path.exists(BASE_DATAPATH):
     raise FileNotFoundError(f"no such a director {BASE_DATAPATH}")
 
 
-def combine_trails() -> List[List[int]]:
-    t = range(len(os.listdir(EMBEDDINGS / LEARNING)))
-    trial_combs = []
-    for r in range(1, len(t) + 1):
-        trial_combs.extend([list(x) for x in combinations(t, r)])
-    return trial_combs
+def combine_trails(ml_type: str) -> List[List[int]]:
+    final_trial_combs = defaultdict()
+    base_path = EMBEDDINGS / ml_type
+    for file in os.listdir(base_path):
+        t = range(len(os.listdir(base_path / file)))
+        trial_combs = []
+        for r in range(1, len(t) + 1):
+            trial_combs.extend([list(x) for x in combinations(t, r)])
+        final_trial_combs[file] = trial_combs
+    return final_trial_combs
     # return [combinations(NODE_NETWORKS, i) for i in range(1, len(NODE_NETWORKS)+1)]
 
 
@@ -53,7 +57,7 @@ def txt_to_pickle():
                 patient_id = data["PATIENT_ID"]
             else:
                 patient_id = data.index
-            users[file] = patient_id
+            users[file.split(".")[0]] = patient_id
         for file in os.listdir(LABELS):
             labels = pd.read_pickle(f"{LABELS}/{file}")
         return sample_data, users, labels
@@ -94,12 +98,14 @@ def txt_to_pickle():
             data = data.T
             data.columns = hugo_symbol.values
             patient_id = data.index
-        users[file] = patient_id
-        sample_data[file.split(".")[0]] = data
-        data.to_pickle(f"{to_save_folder}/{file.split('.')[0]}.pkl")
+        file_name = file.split(".")[0]
+        users[file_name] = patient_id
+        sample_data[file_name] = data
+        data.to_pickle(f"{to_save_folder}/{file_name}.pkl")
     return sample_data, users, labels
 
 
+# do preprocessing here
 sample_data, users, labels = txt_to_pickle()
 
 
@@ -120,22 +126,24 @@ logger.info(
     f"It took {str(round(start2 - start, 1))} seconds for node embedding generation"
 )
 logger.info("SUPREME is integrating the embeddings..")
-
-trial_combs = combine_trails()
-
-for trials in range(len(trial_combs)):
-    final_result = train_ml_model(
-        trial_combs=trial_combs,
-        trials=trials,
-        labels=labels,
-        train_valid_idx=train_valid_idx,
-        test_idx=test_idx,
-        embeddings=embeddings,
-    )
-    logger.info(f"Combination {trials}, selected parameters:")
-    for key, res in final_result.items():
-        logger.info(f"{key}: {res}")
-    logger.info("Done\n")
+for ml_type in LEARNING:
+    trial_combs = combine_trails(ml_type=ml_type)
+    for trial_name, trial in trial_combs.items():
+        for trials in range(len(trial)):
+            final_result = train_ml_model(
+                ml_type=ml_type,
+                trial_name=trial_name,
+                trial_combs=trial,
+                trials=trials,
+                labels=labels,
+                train_valid_idx=train_valid_idx,
+                test_idx=test_idx,
+                embeddings=embeddings,
+            )
+            logger.info(f"Combination {trials}, selected parameters:")
+            for key, res in final_result.items():
+                logger.info(f"{key}: {res}")
+            logger.info("Done\n")
 
 
 end = time.time()

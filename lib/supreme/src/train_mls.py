@@ -8,7 +8,14 @@ import torch
 from learning_types import LearningTypes
 from ml_models import MLModels
 from node_generation import add_row_features
-from settings import ADD_RAW_FEAT, EMBEDDINGS, INT_MOTHOD, LEARNING, X_TIME2
+from settings import (
+    ADD_RAW_FEAT,
+    EMBEDDINGS,
+    INT_MOTHOD_CLASSIFICATION,
+    INT_MOTHOD_CLUSTERING,
+    LEARNING,
+    X_TIME2,
+)
 from sklearn.metrics import (
     accuracy_score,
     adjusted_rand_score,
@@ -25,6 +32,8 @@ DEVICE = torch.device("cpu")
 
 
 def train_ml_model(
+    ml_type: str,
+    trial_name: str,
     trial_combs: List[List[int]],
     trials: int,
     labels: pd.DataFrame,
@@ -33,7 +42,9 @@ def train_ml_model(
     embeddings: Dict,
 ):
 
-    NODE_NETWORKS2 = [os.listdir(EMBEDDINGS / LEARNING)[i] for i in trial_combs[trials]]
+    NODE_NETWORKS2 = [
+        os.listdir(EMBEDDINGS / ml_type / trial_name)[i] for i in trial_combs[trials]
+    ]
     if len(NODE_NETWORKS2) == 1:
         emb = embeddings[NODE_NETWORKS2[0]]
     else:
@@ -56,10 +67,12 @@ def train_ml_model(
 
     clustering = False
     if LEARNING is LearningTypes.clustering.name:
-        ml_model = MLModels(model=INT_MOTHOD, x_train=X_train)
+        ml_model = MLModels(model=INT_MOTHOD_CLUSTERING, x_train=X_train)
         clustering = True
     else:
-        ml_model = MLModels(model=INT_MOTHOD, x_train=X_train, y_train=y_train)
+        ml_model = MLModels(
+            model=INT_MOTHOD_CLASSIFICATION, x_train=X_train, y_train=y_train
+        )
 
     model, search = ml_model.train_ml_model_factory()
     results = defaultdict(list)

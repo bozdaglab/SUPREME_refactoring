@@ -2,7 +2,6 @@ import torch
 import torch.nn.functional as F
 from dotenv import find_dotenv, load_dotenv
 from learning_types import LearningTypes
-from settings import LEARNING
 from torch.nn import Linear, Module
 from torch_geometric.data import Data
 from torch_geometric.nn import ARGVA, GAE, GCNConv
@@ -13,10 +12,6 @@ DEVICE = torch.device("cpu")
 MAX_LOGSTD = 10
 EPS = 1e-15
 
-if LEARNING == LearningTypes.regression.name:
-    CRITERION = torch.nn.MSELoss()
-elif LEARNING == LearningTypes.classification.name:
-    CRITERION = torch.nn.CrossEntropyLoss()
 
 # https://arxiv.org/abs/1607.00653,
 # https://arxiv.org/abs/1611.0730,
@@ -73,14 +68,18 @@ class Discriminator(Module):
 
 
 class SupremeClassification:
-    def __init__(self, model: SUPREME) -> None:
+    def __init__(self, model: SUPREME, super_unsuper_model: str) -> None:
         self.model = model
+        if super_unsuper_model == LearningTypes.regression.name:
+            self.criterion = torch.nn.MSELoss()
+        elif super_unsuper_model == LearningTypes.classification.name:
+            self.criterion = torch.nn.CrossEntropyLoss()
 
     def train(self, optimizer: torch.optim, data: Data):
         self.model.train()
         optimizer.zero_grad()
         emb, _ = self.model(data)
-        loss = CRITERION(emb[data.train_mask], data.y[data.train_mask])
+        loss = self.criterion(emb[data.train_mask], data.y[data.train_mask])
         loss.backward()
         optimizer.step()
         return loss
@@ -89,7 +88,7 @@ class SupremeClassification:
     def validate(self, data: Data):
         self.model.eval()
         emb, _ = self.model(data)
-        loss = CRITERION(emb[data.valid_mask], data.y[data.valid_mask])
+        loss = self.criterion(emb[data.valid_mask], data.y[data.valid_mask])
         return loss, emb
 
 

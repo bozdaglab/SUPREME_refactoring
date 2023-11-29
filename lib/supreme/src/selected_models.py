@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 import torch
 from helper import masking_indexes, pos_neg, random_split
-from learning_types import LearningTypes, OptimizerType
+from learning_types import LearningTypes, OptimizerType, SelectModel, SuperUnsuperModel
 from module import (
     SUPREME,
     Discriminator,
@@ -18,15 +18,8 @@ from module import (
 )
 from settings import (
     CONTEXT_SIZE,
-    DISCRIMINATOR,
     EMBEDDING_DIM,
-    ENCODERINPRODUCT,
-    LEARNING,
-    LINKPREDICTION,
-    NODE2VEC,
-    SIMILARITY_BASED,
     SPARSE,
-    TRAIN_TEST,
     WALK_LENGHT,
     WALK_PER_NODE,
     P,
@@ -51,6 +44,7 @@ class GCNSupervised:
 
     def prepare_data(
         self,
+        data_generation_types: Optional[str],
         edge_index: pd.DataFrame,
         col: Optional[str] = None,
         multi_labels: bool = False,
@@ -83,10 +77,10 @@ class GCNSupervised:
             labels=self.labels,
         )
 
-    def model_loss_output(self) -> int:
-        if LEARNING == LearningTypes.regression.name:
+    def model_loss_output(self, model_choice: str) -> int:
+        if model_choice == LearningTypes.regression.name:
             out_size = 1
-        elif LEARNING == LearningTypes.classification.name:
+        elif model_choice == LearningTypes.classification.name:
             # should be int. Check later
             out_size = torch.tensor(
                 len(self.labels.value_counts().unique())
@@ -98,7 +92,9 @@ class GCNUnsupervised:
     def __init__(self, new_x: Tensor) -> None:
         self.new_x = new_x
 
-    def prepare_data(self, edge_index: pd.DataFrame, thr: float = 0.60) -> Data:
+    def prepare_data(
+        self, data_generation_types: str, edge_index: pd.DataFrame
+    ) -> Data:
         """
         Create a data object by adding features, edge_index, edge_attr.
         For unsupervised GCN, this function
@@ -113,15 +109,10 @@ class GCNUnsupervised:
             A data object ready to pass to GCN
         """
         train_valid_idx, test_idx = random_split(new_x=self.new_x)
-        # temporary, remove it after fresh run (generate fresh similarity)
-        f = [idx for idx, val in enumerate(edge_index["Similarity Score"]) if val > 0.0]
-        edge_index = edge_index[edge_index.index.isin(f)].reset_index(drop=True)
-
-        edge_index["links"] = [
-            1 if val > thr else 0 for val in edge_index["Similarity Score"]
-        ]
+        if isinstance(edge_index, dict):
+            edge_index = pd.DataFrame(edge_index).T
         data = make_data(new_x=self.new_x, edge_index=edge_index)
-        if NODE2VEC:
+        if data_generation_types == SelectModel.node2vec.name:
             node2vec = Node2Vec(
                 edge_index=data.edge_index,
                 embedding_dim=EMBEDDING_DIM,
@@ -135,15 +126,14 @@ class GCNUnsupervised:
             pos, neg = node2vec.sample([10, 15])
             data.pos_edge_labels = torch.tensor(pos.T, device=DEVICE).long()
             data.neg_edge_labels = torch.tensor(neg.T, device=DEVICE).long()
-        elif SIMILARITY_BASED:
-
-            data.pos_edge_labels = pos_neg(edge_index, "links", 1)
-            data.neg_edge_labels = pos_neg(edge_index, "links", 0)
-        elif TRAIN_TEST:
+        elif data_generation_types == SelectModel.similarity_based.name:
+            data.pos_edge_labels = pos_neg(edge_index, "link", 1)
+            data.neg_edge_labels = pos_neg(edge_index, "link", 0)
+        elif data_generation_types == SelectModel.train_test.name:
             data.num_nodes = maybe_num_nodes(data.edge_index)
             data = train_test_split_edges(data=data)
         else:
-            data.pos_edge_labels = pos_neg(edge_index, "links", 1)
+            data.pos_edge_labels = pos_neg(edge_index, "link", 1)
             data.neg_edge_labels = negative_sampling(
                 data.pos_edge_labels, self.new_x.size(0)
             )
@@ -151,7 +141,7 @@ class GCNUnsupervised:
             data=data, train_valid_idx=train_valid_idx, test_idx=test_idx
         )
 
-    def model_loss_output(self) -> int:
+    def model_loss_output(self, model_choice: Optional[str] = None) -> int:
         """
         This function selects the output size
 
@@ -251,7 +241,7 @@ def train_test_valid(
 
 
 def load_model(
-    new_x: Tensor, labels: Optional[pd.DataFrame]
+    new_x: Tensor, labels: Optional[pd.DataFrame], model: str
 ) -> Union[GCNUnsupervised, GCNSupervised]:
     """
     Load supervised or unsupervised GCN
@@ -264,7 +254,7 @@ def load_model(
     Return:
         Supervised or unsupervised GCN
     """
-    if LEARNING == LearningTypes.clustering.name:
+    if model == LearningTypes.clustering.name:
         return GCNUnsupervised(new_x=new_x)
     return GCNSupervised(new_x=new_x, labels=labels)
 
@@ -315,7 +305,7 @@ def select_optimizer(
 
 
 def select_model(
-    in_size: int, hid_size: int, out_size: int
+    super_unsuper_model: str, in_size: int, hid_size: int, out_size: int
 ) -> Union[SupremeClassification, EncoderDecoder, EncoderInnerProduct]:
     """
     This function selects the return of the model
@@ -332,20 +322,25 @@ def select_model(
     Return:
         Models, whether original SUPREME, or encoder-decoder model
     """
-    if LEARNING in [LearningTypes.classification.name, LearningTypes.regression.name]:
+    if super_unsuper_model in [
+        LearningTypes.classification.name,
+        LearningTypes.regression.name,
+    ]:
         model = SUPREME(in_size=in_size, hid_size=hid_size, out_size=out_size)
-        return SupremeClassification(model=model)
+        return SupremeClassification(
+            model=model, super_unsuper_model=super_unsuper_model
+        )
     else:
-        if DISCRIMINATOR:
+        if super_unsuper_model == SuperUnsuperModel.discriminator.name:
             encoder = Encoder(in_size=in_size, hid_size=hid_size, out_size=out_size)
             discriminator = Discriminator(
                 in_size=in_size, hid_size=hid_size, out_size=out_size
             )
             return EncoderDecoder(encoder=encoder, discriminator=discriminator)
-        elif LINKPREDICTION:
+        elif super_unsuper_model == SuperUnsuperModel.linkprediction.name:
             model = SUPREME(in_size=in_size, hid_size=hid_size, out_size=out_size)
             return SupremeClusteringLink(model=model)
-        elif ENCODERINPRODUCT:
+        elif super_unsuper_model == SuperUnsuperModel.encoderinproduct.name:
             encoder = SUPREME(in_size=in_size, hid_size=hid_size, out_size=out_size)
             return EncoderInnerProduct(encoder=encoder)
         else:
