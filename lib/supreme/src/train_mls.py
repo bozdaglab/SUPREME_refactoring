@@ -41,12 +41,10 @@ def train_ml_model(
     test_idx: Tensor,
     embeddings: Dict,
 ):
-
-    NODE_NETWORKS2 = [
-        os.listdir(EMBEDDINGS / ml_type / trial_name)[i] for i in trial_combs[trials]
-    ]
+    files = os.listdir(EMBEDDINGS / ml_type / trial_name)
+    NODE_NETWORKS2 = [files[i] for i in trial_combs[trials]]
     if len(NODE_NETWORKS2) == 1:
-        emb = embeddings[NODE_NETWORKS2[0]]
+        emb = embeddings[trial_name][files.index(NODE_NETWORKS2[0])]
     else:
         for netw_base in NODE_NETWORKS2:
             emb = pd.DataFrame()
