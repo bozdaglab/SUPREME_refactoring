@@ -102,7 +102,7 @@ def get_stat_methos(stat_method: str):
 def set_same_users(sample_data: Dict, users: Dict, labels: Dict) -> Dict:
     new_dataset = defaultdict()
     shared_users = search_dictionary(users, len(users) - 1)
-    shared_users = sorted(shared_users)
+    shared_users = sorted(shared_users)[0:100]
     shared_users_encoded = LabelEncoder().fit_transform(shared_users)
     for file_name, data in sample_data.items():
         new_dataset[file_name] = data[data.index.isin(shared_users)].set_index(
@@ -115,7 +115,7 @@ def drop_rows(application_train: pd.DataFrame, gh: List[str]) -> pd.DataFrame:
     return application_train[gh].reset_index(drop=True)
 
 
-def similarity_matrix_generation(new_dataset: Dict) -> Dict:
+def similarity_matrix_generation(new_dataset: Dict, thr: float = 0.60) -> Dict:
     # parqua dataset, parallel
     final_correlation = defaultdict()
     if not os.path.exists(EDGES):
@@ -123,7 +123,7 @@ def similarity_matrix_generation(new_dataset: Dict) -> Dict:
     file_names = os.listdir(EDGES)
     if file_names:
         for file in file_names:
-            final_correlation[file] = pd.read_pickle(f"{EDGES}/{file}")
+            final_correlation[file.split(".")[0]] = pd.read_pickle(f"{EDGES}/{file}")
         return final_correlation
 
     for file_name, data in new_dataset.items():
@@ -140,13 +140,14 @@ def similarity_matrix_generation(new_dataset: Dict) -> Dict:
                     correlation_dictionary[f"{ind_i}_{ind_j}"] = {
                         "Patient_1": ind_i,
                         "Patient_2": ind_j,
-                        "links": similarity_score,
+                        "Similarity Score": similarity_score,
+                        "link": 1 if similarity_score > thr else 0,
                     }
         final_correlation[file_name] = correlation_dictionary
 
         pd.DataFrame(
             correlation_dictionary.values(),
-            columns=["Patient_1", "Patient_2", "links"],
+            columns=list(correlation_dictionary.items())[0][1].keys(),
         ).to_pickle(EDGES / f"similarity_{file_name}.pkl")
     return final_correlation
 

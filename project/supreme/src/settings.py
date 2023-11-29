@@ -9,14 +9,12 @@ load_dotenv(find_dotenv())
 
 
 ADD_RAW_FEAT = bool(strtobool(os.environ.get("ADD_RAW_FEAT")))
-LEARNING = os.environ.get("LEARNING")
-if LEARNING == "clustering":
-    INT_MOTHOD = os.environ.get("INT_MOTHOD_CLUSTERING")
-else:
-    INT_MOTHOD = os.environ.get("INT_MOTHOD_CLASSIFICATION")
+LEARNING = json.loads(os.environ.get("LEARNING"))
 OPTIONAL_FEATURE_SELECTION = bool(
     strtobool(os.environ.get("OPTIONAL_FEATURE_SELECTION"))
 )
+INT_MOTHOD_CLUSTERING = os.environ.get("INT_MOTHOD_CLUSTERING")
+INT_MOTHOD_CLASSIFICATION = os.environ.get("INT_MOTHOD_CLASSIFICATION")
 NUMBER_FEATURES = [20]
 X_ITER = 20
 SELECTION_METHOD = [
@@ -31,8 +29,8 @@ SELECTION_METHOD = [
     # "BorutaPy",
 ]
 MODELS_B = ["RF"]
-
-
+UNSUPERVISED_MODELS = json.loads(os.environ.get("UNSUPERVISED_MODELS"))
+POS_NEG_MODELS = json.loads(os.environ.get("POS_NEG_MODELS"))
 LOGGING_LEVEL = os.environ.get("LOGGING_LEVEL")
 IMPUTER_NAME_SUBSET = os.environ.get("IMPUTER_NAME_SUBSET")
 IMPUTER_NAME_WHOLE = os.environ.get("IMPUTER_NAME_WHOLE")
