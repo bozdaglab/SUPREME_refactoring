@@ -6,7 +6,8 @@ from typing import Dict, Optional, Union
 import numpy as np
 import pandas as pd
 import torch
-from feature_selections import select_features
+
+# from feature_selections import select_features
 from helper import nan_checker, row_col_ratio
 from learning_types import LearningTypes
 from pre_processings import pre_processing
@@ -58,9 +59,11 @@ def node_feature_generation(
             feat = feat[feat.columns[0:300]]
             if nan_checker(feat):
                 feat = pre_processing(feat)
-            feat = select_features(
-                application_train=feat, labels=labels, feature_type=feature_type
-            )
+            # feat = select_features(
+            #     application_train=feat, labels=labels, feature_type=feature_type
+            # )
+            if feat.empty:
+                continue
             values = torch.tensor(feat.values, device=DEVICE)
         else:
             values = feat.values
@@ -204,8 +207,10 @@ def train_steps(
             out_size=out_size,
         )
         av_valid_losses = []
+        optimizer = select_optimizer(
+            OPTIM, model, learning_rate
+        )  # add OPTIM to the actual function
         for _ in range(X_TIME2):
-            optimizer = select_optimizer(OPTIM, model, learning_rate)
             min_valid_loss = np.Inf
             patience_count = 0
             for epoch in range(MAX_EPOCHS):

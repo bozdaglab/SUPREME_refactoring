@@ -246,5 +246,5 @@ def load_models2(
             n_estimators="auto",
             verbose=2,
             random_state=42,
-            max_iter=5,
+            max_iter=50,
         )

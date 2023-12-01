@@ -1,6 +1,7 @@
 import logging
 import os
 import pickle
+import sys
 import time
 import warnings
 from collections import defaultdict
@@ -23,6 +24,13 @@ from settings import (
 )
 from sklearn.preprocessing import LabelEncoder
 from train_mls import train_ml_model
+
+load_dotenv(find_dotenv())
+LIB = os.environ.get("LIB")
+PROJECT = os.environ.get("PROJECT")
+
+sys.path.append(LIB)
+sys.path.append(PROJECT)
 
 load_dotenv(find_dotenv())
 set_log_config()

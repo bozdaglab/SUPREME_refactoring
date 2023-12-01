@@ -6,6 +6,8 @@ from torch.nn import Linear, Module
 from torch_geometric.data import Data
 from torch_geometric.nn import ARGVA, GAE, GCNConv
 
+# from torch_geometric.nn.models.autoencoder import InnerProductDecoder
+
 load_dotenv(find_dotenv())
 
 DEVICE = torch.device("cpu")
@@ -98,7 +100,7 @@ class SupremeClusteringLink:
         self.criterion_link = torch.nn.BCEWithLogitsLoss()
 
     def train(self, optimizer: torch.optim, data: Data):
-        # GraphSAGE predict adhacency matrix
+        # GraphSAGE predict adjacency matrix https://arxiv.org/abs/1706.02216
         self.model.train()
         optimizer.zero_grad()
         emb, _ = self.model(data)
@@ -138,7 +140,14 @@ class EncoderDecoder:
             discriminator_loss = self.model.discriminator_loss(emb)
             discriminator_loss.backward()
             optimizer.decoder_loss.step()
-        loss = self.model.recon_loss(emb, data.pos_edge_labels)
+        if "neg_edge_labels" in data.keys():
+            loss = self.model.recon_loss(
+                z=emb,
+                pos_edge_index=data.pos_edge_labels,
+                neg_edge_index=data.neg_edge_labels,
+            )
+        else:
+            loss = self.model.recon_loss(z=emb, pos_edge_index=data.pos_edge_labels)
         loss = loss + self.model.reg_loss(emb)
         loss = loss + (1 / data.num_nodes) * self.model.kl_loss()
         loss.backward()
@@ -149,6 +158,9 @@ class EncoderDecoder:
 
     @torch.no_grad()
     def validate(self, data: Data):
+        """
+        Predict positive and negative samples
+        """
         criterion = torch.nn.BCEWithLogitsLoss()
         self.model.eval()
         emb = self.model.encode(data)
@@ -177,7 +189,14 @@ class EncoderInnerProduct:
         self.model.train()
         optimizer.zero_grad()
         emb, _ = self.model.encode(data)
-        loss = self.model.recon_loss(emb, data.pos_edge_labels)
+        if "neg_edge_labels" in data.keys():
+            loss = self.model.recon_loss(
+                z=emb,
+                pos_edge_index=data.pos_edge_labels,
+                neg_edge_index=data.neg_edge_labels,
+            )
+        else:
+            loss = self.model.recon_loss(z=emb, pos_edge_index=data.pos_edge_labels)
         loss.backward()
         optimizer.step()
         if not isinstance(loss, float):
@@ -239,16 +258,16 @@ class EncoderEntireInput:
         dec_out = self.decoder(emb)
         return self.criterion(dec_out, data.x), emb
 
-        # elif MASKING: # this should goes to prediction
-        #     # mask some edges and used those as negative values
-        #     num_nodes = maybe_num_nodes(data.edge_index)
-        #     mask_edges = torch.rand(edge_index.size(1)) < 0.5
-        #     non_mask_edges = ~mask_edges
-        #     neg_edge_labels = data.edge_index.clone()
-        #     neg_edge_labels[0:mask_edges] = torch.randint(
-        #         num_nodes, (mask_edges.sum(),), device=DEVICE
-        #     )
-        #     neg_edge_labels[0:non_mask_edges] = torch.randint(
-        #         num_nodes, (non_mask_edges.sum(),), device=DEVICE
-        #     )
-        #     data.neg_edge_labels = neg_edge_labels
+
+# # mask some edges and used those as negative values
+# num_nodes = maybe_num_nodes(data.edge_index)
+# mask_edges = torch.rand(edge_index.size(1)) < 0.5
+# non_mask_edges = ~mask_edges
+# neg_edge_labels = data.edge_index.clone()
+# neg_edge_labels[0:mask_edges] = torch.randint(
+#     num_nodes, (mask_edges.sum(),), device=DEVICE
+# )
+# neg_edge_labels[0:non_mask_edges] = torch.randint(
+#     num_nodes, (non_mask_edges.sum(),), device=DEVICE
+# )
+# data.neg_edge_labels = neg_edge_labels

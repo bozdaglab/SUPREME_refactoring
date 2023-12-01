@@ -16,12 +16,10 @@ from module import (
     SupremeClassification,
     SupremeClusteringLink,
 )
-from settings import (
+from settings import (  # WALK_LENGHT,; WALK_PER_NODE,
     CONTEXT_SIZE,
     EMBEDDING_DIM,
     SPARSE,
-    WALK_LENGHT,
-    WALK_PER_NODE,
     P,
     Q,
 )
@@ -116,14 +114,14 @@ class GCNUnsupervised:
             node2vec = Node2Vec(
                 edge_index=data.edge_index,
                 embedding_dim=EMBEDDING_DIM,
-                walk_length=WALK_LENGHT,
+                walk_length=round(edge_index.shape[0] * 0.002),
                 context_size=CONTEXT_SIZE,
-                walks_per_node=WALK_PER_NODE,
+                walks_per_node=6,
                 p=P,
                 q=Q,
                 sparse=SPARSE,
             ).to(DEVICE)
-            pos, neg = node2vec.sample([10, 15])
+            pos, neg = node2vec.sample([10, 15])  # batch size
             data.pos_edge_labels = torch.tensor(pos.T, device=DEVICE).long()
             data.neg_edge_labels = torch.tensor(neg.T, device=DEVICE).long()
         elif data_generation_types == SelectModel.similarity_based.name:
@@ -144,7 +142,6 @@ class GCNUnsupervised:
     def model_loss_output(self, model_choice: Optional[str] = None) -> int:
         """
         This function selects the output size
-
         """
         return self.new_x.shape[-1]
 
@@ -331,6 +328,7 @@ def select_model(
             model=model, super_unsuper_model=super_unsuper_model
         )
     else:
+        # https://arxiv.org/abs/1802.04407
         if super_unsuper_model == SuperUnsuperModel.discriminator.name:
             encoder = Encoder(in_size=in_size, hid_size=hid_size, out_size=out_size)
             discriminator = Discriminator(

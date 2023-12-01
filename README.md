@@ -20,7 +20,8 @@ pip install pre-commit
 ```shell script
 pip install -r requirements.txt
 pip install -r requirements-dev.txt
-pip install -e lib/supreme
+#pip install -e lib/supreme
+pip install torch_scatter torch_sparse torch_cluster torch_spline_conv -f https://data.pyg.org/whl/torch-2.1.0+cpu.html
 ```
 
 
