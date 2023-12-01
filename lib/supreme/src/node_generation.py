@@ -108,23 +108,24 @@ def node_embedding_generation(
         #         for plk_file in os.listdir(path_dir):
         #             embeddings[name].append(pd.read_pickle(f"{path_dir}/{plk_file}"))
         #     return embeddings
-
+        if isinstance(feature_type, list):
+            feature_type = "_".join(feature_type)
         learning_model = load_model(new_x=new_x, labels=labels, model=model_choice)
         for name, edge_index in final_correlation.items():
             if model_choice == LearningTypes.clustering.name:
-                for data_generation_types, unsupervised_model in product(
+                for data_gen_types, unsupervised_model in product(
                     POS_NEG_MODELS, UNSUPERVISED_MODELS
                 ):
-                    dir_path = f"{EMBEDDINGS}/{model_choice}/{data_generation_types}_{unsupervised_model}"
+                    dir_path = f"{EMBEDDINGS}/{model_choice}/{data_gen_types}_{unsupervised_model}/{feature_type}"
                     if not os.path.exists(dir_path):
-                        os.mkdir(dir_path)
+                        os.makedirs(dir_path)
                     list_dir = os.listdir(dir_path)
                     name_ = f"{name}.pkl"
-                    name_dir = f"{dir_path}/{name_}/{feature_type}"
+                    name_dir = f"{dir_path}/{name_}"
                     if list_dir and name_ in list_dir:
                         continue
                     train_steps(
-                        data_generation_types=data_generation_types,
+                        data_gen_types=data_gen_types,
                         learning_model=learning_model,
                         edge_index=edge_index,
                         name=name_dir,
@@ -180,7 +181,7 @@ def train_steps(
     edge_index: pd.DataFrame,
     name: str,
     model_choice: str,
-    data_generation_types: Optional[str] = None,
+    data_gen_types: Optional[str] = None,
     super_unsuper_model: Optional[str] = None,
 ):
 
@@ -190,7 +191,7 @@ def train_steps(
     if not super_unsuper_model:
         super_unsuper_model = model_choice
     data = learning_model.prepare_data(
-        data_generation_types=data_generation_types, edge_index=edge_index
+        data_gen_types=data_gen_types, edge_index=edge_index
     )
     best_ValidLoss = np.Inf
     out_size = learning_model.model_loss_output(model_choice=model_choice)
