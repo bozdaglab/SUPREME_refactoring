@@ -10,7 +10,6 @@ from ml_models import MLModels
 from node_generation import add_row_features
 from settings import (
     ADD_RAW_FEAT,
-    EMBEDDINGS,
     INT_MOTHOD_CLASSIFICATION,
     INT_MOTHOD_CLUSTERING,
     LEARNING,
@@ -32,27 +31,30 @@ DEVICE = torch.device("cpu")
 
 
 def train_ml_model(
-    ml_type: str,
-    trial_name: str,
     trial_combs: List[List[int]],
     trials: int,
     labels: pd.DataFrame,
     train_valid_idx: Tensor,
     test_idx: Tensor,
-    embeddings: Dict,
+    dir_name: str,
 ):
-
-    NODE_NETWORKS2 = [
-        os.listdir(EMBEDDINGS / ml_type / trial_name)[i] for i in trial_combs[trials]
-    ]
+    files = os.listdir(dir_name)
+    NODE_NETWORKS2 = [files[i] for i in trial_combs[trials]]
     if len(NODE_NETWORKS2) == 1:
-        emb = embeddings[NODE_NETWORKS2[0]]
+        emb = torch.tensor(
+            pd.read_pickle(f"{dir_name}/{NODE_NETWORKS2[0]}").values, device=DEVICE
+        )
     else:
+        is_first = True
         for netw_base in NODE_NETWORKS2:
-            emb = pd.DataFrame()
-            cur_emb = pd.read_csv(f"{EMBEDDINGS}/{LEARNING}/{netw_base}")
-            emb = emb.append(cur_emb)
-    emb = torch.tensor(emb.values, device=DEVICE)
+            cur_emb = pd.read_pickle(f"{dir_name}/{netw_base}").values
+            if is_first:
+                emb = torch.tensor(cur_emb, device=DEVICE)
+                is_first = False
+            else:
+                emb = torch.cat(
+                    (emb, torch.tensor(cur_emb, device=DEVICE).float()), dim=1
+                )
     if ADD_RAW_FEAT is True:
         emb = add_row_features(emb=emb)
 

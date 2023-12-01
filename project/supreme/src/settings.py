@@ -18,7 +18,7 @@ INT_MOTHOD_CLASSIFICATION = os.environ.get("INT_MOTHOD_CLASSIFICATION")
 NUMBER_FEATURES = [20]
 X_ITER = 20
 SELECTION_METHOD = [
-    "pearson",
+    # "pearson",
     # "lasso",
     # "RFE",
     # "SelectFromModel",
@@ -26,7 +26,8 @@ SELECTION_METHOD = [
     # "SelectBySingleFeaturePerformance",
     # "SelectByShuffling",
     # "GeneticSelectionCV",
-    # "BorutaPy",
+    "BorutaPy",
+    ["BorutaPy", "pearson"],
 ]
 MODELS_B = ["RF"]
 UNSUPERVISED_MODELS = json.loads(os.environ.get("UNSUPERVISED_MODELS"))
