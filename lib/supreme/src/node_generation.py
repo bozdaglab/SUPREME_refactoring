@@ -1,6 +1,5 @@
 import os
 import statistics
-from collections import defaultdict
 from itertools import product
 from typing import Dict, Optional, Union
 
@@ -79,7 +78,8 @@ def node_embedding_generation(
     new_x: Tensor,
     labels: Optional[pd.DataFrame],
     final_correlation: Dict,
-) -> Dict:
+    feature_type: Optional[str] = None,
+) -> None:
     """
     This function loads edges, turns SUPREME to supervised or unsupervised
     and generates embeddings for each omic
@@ -94,20 +94,20 @@ def node_embedding_generation(
     Return:
         Generate embeddings for each omic
     """
-    embeddings = defaultdict(list)
+
     if not os.path.exists(EMBEDDINGS):
         os.mkdir(EMBEDDINGS)
     for model_choice in LEARNING:
         emb_path = EMBEDDINGS / model_choice
         if not os.path.exists(emb_path):
             os.mkdir(emb_path)
-        embeddings_file = os.listdir(emb_path)
-        if embeddings_file:
-            for name in embeddings_file:
-                path_dir = f"{emb_path}/{name}"
-                for plk_file in os.listdir(path_dir):
-                    embeddings[name].append(pd.read_pickle(f"{path_dir}/{plk_file}"))
-            return embeddings
+        # embeddings_file = os.listdir(emb_path)
+        # if embeddings_file:
+        #     for name in embeddings_file:
+        #         path_dir = f"{emb_path}/{name}"
+        #         for plk_file in os.listdir(path_dir):
+        #             embeddings[name].append(pd.read_pickle(f"{path_dir}/{plk_file}"))
+        #     return embeddings
 
         learning_model = load_model(new_x=new_x, labels=labels, model=model_choice)
         for name, edge_index in final_correlation.items():
@@ -120,10 +120,10 @@ def node_embedding_generation(
                         os.mkdir(dir_path)
                     list_dir = os.listdir(dir_path)
                     name_ = f"{name}.pkl"
-                    name_dir = f"{dir_path}/{name_}"
+                    name_dir = f"{dir_path}/{name_}/{feature_type}"
                     if list_dir and name_ in list_dir:
                         continue
-                    embeddings[name] = train_steps(
+                    train_steps(
                         data_generation_types=data_generation_types,
                         learning_model=learning_model,
                         edge_index=edge_index,
@@ -132,13 +132,12 @@ def node_embedding_generation(
                         super_unsuper_model=unsupervised_model,
                     )
             else:
-                embeddings[name] = train_steps(
+                train_steps(
                     learning_model=learning_model,
                     edge_index=edge_index,
                     name=name,
                     model_choice=model_choice,
                 )
-    return embeddings
 
 
 def add_row_features(emb: Tensor, is_first: bool = True) -> Tensor:
@@ -227,4 +226,3 @@ def train_steps(
             best_ValidLoss = av_valid_loss
             selected_emb = this_emb
     pd.DataFrame(selected_emb).to_pickle(f"{name}")
-    return selected_emb
