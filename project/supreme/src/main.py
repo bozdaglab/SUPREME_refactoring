@@ -124,10 +124,19 @@ new_dataset, labels = set_same_users(
 final_correlation = similarity_matrix_generation(new_dataset=new_dataset)
 logger.info("SUPREME is running..")
 feature_based_embeddings = defaultdict()
-for feature_type in SELECTION_METHOD:
+if isinstance(labels, pd.Series):
+    for feature_type in SELECTION_METHOD:
+        new_x = node_feature_generation(
+            new_dataset=new_dataset, labels=labels, feature_type=feature_type
+        )
+        train_valid_idx, test_idx = random_split(new_x)
+        feature_based_embeddings[feature_type] = node_embedding_generation(
+            new_x=new_x, labels=labels, final_correlation=final_correlation
+        )
+else:
     new_x = node_feature_generation(new_dataset=new_dataset, labels=labels)
     train_valid_idx, test_idx = random_split(new_x)
-    feature_based_embeddings[feature_type] = node_embedding_generation(
+    feature_based_embeddings["clustering"] = node_embedding_generation(
         new_x=new_x, labels=labels, final_correlation=final_correlation
     )
 start2 = time.time()
@@ -137,25 +146,31 @@ logger.info(
 )
 logger.info("SUPREME is integrating the embeddings..")
 for ml_type in LEARNING:
-    trial_combs = combine_trails(ml_type=ml_type)
-    for trial_name, trial in trial_combs.items():
-        for trials in range(len(trial)):
-            final_result = train_ml_model(
-                ml_type=ml_type,
-                trial_name=trial_name,
-                trial_combs=trial,
-                trials=trials,
-                labels=labels,
-                train_valid_idx=train_valid_idx,
-                test_idx=test_idx,
-                embeddings=feature_based_embeddings,
-            )
-            with open(f"{EMBEDDINGS}/{ml_type}/{trial_name}/result.txt", "a") as file:
-                logger.info(f"Combination {trials}, selected parameters:")
-                for key, res in final_result.items():
-                    logger.info(f"{key}: {res}")
-                    file.write(f"{key}: {res}\n")
-                file.write("\n\n")
+    result_path = f"{EMBEDDINGS}/result"
+    if not os.path.exists(result_path):
+        os.mkdir(result_path)
+    for name, embeddings in feature_based_embeddings.items():
+        if isinstance(name, list):
+            name = "all"
+        trial_combs = combine_trails(ml_type=ml_type)
+        for trial_name, trial in trial_combs.items():
+            for trials in range(len(trial)):
+                final_result = train_ml_model(
+                    ml_type=ml_type,
+                    trial_name=trial_name,
+                    trial_combs=trial,
+                    trials=trials,
+                    labels=labels,
+                    train_valid_idx=train_valid_idx,
+                    test_idx=test_idx,
+                    embeddings=embeddings,
+                )
+                with open(f"{result_path}/{trial_name}_{name}_result.txt", "a") as file:
+                    logger.info(f"Combination {trials}, selected parameters:")
+                    for key, res in final_result.items():
+                        logger.info(f"{key}: {res}")
+                        file.write(f"{key}: {res}\n")
+                    file.write("\n\n")
 
 
 end = time.time()

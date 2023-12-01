@@ -26,7 +26,7 @@ SELECTION_METHOD = [
     # "SelectBySingleFeaturePerformance",
     # "SelectByShuffling",
     # "GeneticSelectionCV",
-    # "BorutaPy",
+    "BorutaPy",
 ]
 MODELS_B = ["RF"]
 UNSUPERVISED_MODELS = json.loads(os.environ.get("UNSUPERVISED_MODELS"))

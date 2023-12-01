@@ -35,7 +35,7 @@ def pos_neg(edge_index: pd.DataFrame, column: str, col_idx: int) -> Tensor:
     ).long()
 
 
-def ratio(new_x: torch) -> List[int]:
+def train_test_ratio(new_x: torch) -> List[int]:
     """
     This function defines the ratio for train test splitting
 
@@ -51,6 +51,10 @@ def ratio(new_x: torch) -> List[int]:
     shape = new_x.shape[0]
     train_idx = round(shape * 0.75)
     return [train_idx, shape - train_idx]
+
+
+def features_ratio(number: int) -> int:
+    return round(number * 70 / 100) - 1
 
 
 def lower_upper_bound(new_alpha: float, mulitply: int = 2, range_value=6) -> np.array:
@@ -72,7 +76,7 @@ def random_split(new_x: Tensor) -> Tuple[Tensor, Tensor]:
     Return:
         New datasets
     """
-    return torch.utils.data.random_split(new_x, ratio(new_x))
+    return torch.utils.data.random_split(new_x, train_test_ratio(new_x))
 
 
 def masking_indexes(data, indexes):

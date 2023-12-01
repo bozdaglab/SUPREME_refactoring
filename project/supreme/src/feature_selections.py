@@ -1,16 +1,16 @@
 import logging
 from collections import defaultdict
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 
 # import lime
 import numpy as np
 import pandas as pd
 from helper import (
     drop_rows,
+    features_ratio,
     load_models1,
     load_models2,
     lower_upper_bound,
-    ratio,
     search_dictionary,
 )
 from learning_types import FeatureSelectionType
@@ -40,8 +40,7 @@ class FeatureALgo:
                 SelectKBest(r_regression, k=k_val).fit(X, y).get_feature_names_out()
             )
         return search_dictionary(
-            methods_features=pearson_features,
-            thr=0,  # ratio(len(NUMBER_FEATURES)) wrong type
+            methods_features=pearson_features, thr=features_ratio(len(NUMBER_FEATURES))
         )
 
     def lasso(self, X: pd.DataFrame, y: pd.DataFrame, coef=0.00001) -> List[str]:
@@ -62,7 +61,9 @@ class FeatureALgo:
                 lasso_features[f"{iter_number}"] = features
         if lasso_features:
             logger.info("Done with Lasso")
-            return search_dictionary(methods_features=lasso_features, thr=ratio(X_ITER))
+            return search_dictionary(
+                methods_features=lasso_features, thr=features_ratio(X_ITER)
+            )
         return None
 
     # def select_lime(self, X: pd.DataFrame, y: pd.DataFrame, mlmodel: str) -> List[str]:
@@ -108,7 +109,7 @@ class FeatureALgo:
         if rfe_features:
             logger.info("Done with models and features set")
             return search_dictionary(
-                methods_features=rfe_features, thr=ratio(len(NUMBER_FEATURES))
+                methods_features=rfe_features, thr=features_ratio(len(NUMBER_FEATURES))
             )
         return None
 
@@ -137,7 +138,8 @@ class FeatureALgo:
         if single_feature:
             logger.info("Done with models and features set")
             return search_dictionary(
-                methods_features=single_feature, thr=ratio(len(SELECTION_METHOD))
+                methods_features=single_feature,
+                thr=features_ratio(len(SELECTION_METHOD)),
             )
         return None
 
@@ -153,49 +155,76 @@ class FeatureALgo:
 
 
 def select_features(
-    application_train: pd.DataFrame, labels: pd.DataFrame
+    application_train: pd.DataFrame,
+    labels: pd.DataFrame,
+    feature_type: Optional[str] = None,
 ) -> Tuple[pd.DataFrame, pd.DataFrame]:
     ml_model_train = MLModels(
         model=MODELS_B[0], x_train=application_train, y_train=labels
     ).train_classifier()
     methods_features = defaultdict(lambda: defaultdict(int))
     all_methods = FeatureALgo()
-    for method in SELECTION_METHOD:
-        if method in [
-            FeatureSelectionType.BorutaPy.name,
-            FeatureSelectionType.SelectBySingleFeaturePerformance.name,
-            FeatureSelectionType.SelectByShuffling.name,
-            FeatureSelectionType.GeneticSelectionCV.name,
-        ]:
-            select_features = all_methods.selec_feature_models2(
-                features=application_train,
-                label=labels,
-                feature_selection_type=method,
+    if isinstance(feature_type, list):
+        for method in feature_type:
+            select_features = apply_features_selections(
+                method=method,
+                all_methods=all_methods,
+                application_train=application_train,
+                labels=labels,
                 ml_model_train=ml_model_train,
             )
+            if any(select_features):
+                for feature in select_features:
+                    methods_features[f"{method}"][feature] += 1
 
-        elif method in [
-            FeatureSelectionType.RFE.name,
-            FeatureSelectionType.SelectFromModel.name,
-            FeatureSelectionType.SequentialFeatureSelector.name,
-        ]:
-            select_features = all_methods.select_features_models1(
-                features=application_train,
-                label=labels,
-                feature_selection_type=method,
-                ml_model_train=ml_model_train,
-            )
-        else:
-            selector_method = all_methods.selector.get(method)
-            select_features = selector_method(application_train, labels)
+        final_features = search_dictionary(
+            methods_features, thr=features_ratio(len(methods_features))
+        )
+    else:
+        final_features = apply_features_selections(
+            method=feature_type,
+            all_methods=all_methods,
+            application_train=application_train,
+            labels=labels,
+            ml_model_train=ml_model_train,
+        )
 
-        if any(select_features):
-            for feature in select_features:
-                methods_features[f"{method}"][feature] += 1
-
-    final_features = search_dictionary(
-        methods_features, thr=0  # ratio(len(methods_features)) wrong type
-    )
     application_train = drop_rows(application_train, final_features)
     # application_train = all_methods.mutual_information(application_train, y)
     return application_train
+
+
+def apply_features_selections(
+    method: str,
+    all_methods: FeatureALgo,
+    application_train: pd.DataFrame,
+    labels: pd.DataFrame,
+    ml_model_train: MLModels,
+):
+    if method in [
+        FeatureSelectionType.BorutaPy.name,
+        FeatureSelectionType.SelectBySingleFeaturePerformance.name,
+        FeatureSelectionType.SelectByShuffling.name,
+        FeatureSelectionType.GeneticSelectionCV.name,
+    ]:
+        return all_methods.selec_feature_models2(
+            features=application_train,
+            label=labels,
+            feature_selection_type=method,
+            ml_model_train=ml_model_train,
+        )
+
+    elif method in [
+        FeatureSelectionType.RFE.name,
+        FeatureSelectionType.SelectFromModel.name,
+        FeatureSelectionType.SequentialFeatureSelector.name,
+    ]:
+        return all_methods.select_features_models1(
+            features=application_train,
+            label=labels,
+            feature_selection_type=method,
+            ml_model_train=ml_model_train,
+        )
+    else:
+        selector_method = all_methods.selector.get(method)
+        return selector_method(application_train, labels)

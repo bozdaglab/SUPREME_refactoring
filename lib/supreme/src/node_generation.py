@@ -37,7 +37,9 @@ from torch import Tensor
 DEVICE = torch.device("cpu")
 
 
-def node_feature_generation(new_dataset: Dict, labels: Dict) -> Tensor:
+def node_feature_generation(
+    new_dataset: Dict, labels: Dict, feature_type: Optional[str] = None
+) -> Tensor:
     """
     Load features from each omic separately, apply feature selection if needed,
     and contact them together
@@ -54,10 +56,12 @@ def node_feature_generation(new_dataset: Dict, labels: Dict) -> Tensor:
     is_first = True
     for _, feat in new_dataset.items():
         if row_col_ratio(feat):
-            # feat = feat[feat.columns[0:300]]
+            feat = feat[feat.columns[0:300]]
             if nan_checker(feat):
                 feat = pre_processing(feat)
-            feat = select_features(application_train=feat, labels=labels)
+            feat = select_features(
+                application_train=feat, labels=labels, feature_type=feature_type
+            )
             values = torch.tensor(feat.values, device=DEVICE)
         else:
             values = feat.values
