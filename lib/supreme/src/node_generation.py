@@ -113,10 +113,10 @@ def node_embedding_generation(
         learning_model = load_model(new_x=new_x, labels=labels, model=model_choice)
         for name, edge_index in final_correlation.items():
             if model_choice == LearningTypes.clustering.name:
-                for data_generation_types, unsupervised_model in product(
+                for data_gen_types, unsupervised_model in product(
                     POS_NEG_MODELS, UNSUPERVISED_MODELS
                 ):
-                    dir_path = f"{EMBEDDINGS}/{model_choice}/{data_generation_types}_{unsupervised_model}/{feature_type}"
+                    dir_path = f"{EMBEDDINGS}/{model_choice}/{data_gen_types}_{unsupervised_model}/{feature_type}"
                     if not os.path.exists(dir_path):
                         os.makedirs(dir_path)
                     list_dir = os.listdir(dir_path)
@@ -125,7 +125,7 @@ def node_embedding_generation(
                     if list_dir and name_ in list_dir:
                         continue
                     train_steps(
-                        data_generation_types=data_generation_types,
+                        data_generation_types=data_gen_types,
                         learning_model=learning_model,
                         edge_index=edge_index,
                         name=name_dir,
