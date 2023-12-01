@@ -12,7 +12,15 @@ from dotenv import find_dotenv, load_dotenv
 from helper import random_split, set_same_users, similarity_matrix_generation
 from node_generation import node_embedding_generation, node_feature_generation
 from set_logging import set_log_config
-from settings import BASE_DATAPATH, DATA, EDGES, EMBEDDINGS, LABELS, LEARNING
+from settings import (
+    BASE_DATAPATH,
+    DATA,
+    EDGES,
+    EMBEDDINGS,
+    LABELS,
+    LEARNING,
+    SELECTION_METHOD,
+)
 from sklearn.preprocessing import LabelEncoder
 from train_mls import train_ml_model
 
@@ -115,11 +123,13 @@ new_dataset, labels = set_same_users(
 )
 final_correlation = similarity_matrix_generation(new_dataset=new_dataset)
 logger.info("SUPREME is running..")
-new_x = node_feature_generation(new_dataset=new_dataset, labels=labels)
-train_valid_idx, test_idx = random_split(new_x)
-embeddings = node_embedding_generation(
-    new_x=new_x, labels=labels, final_correlation=final_correlation
-)
+feature_based_embeddings = defaultdict()
+for feature_type in SELECTION_METHOD:
+    new_x = node_feature_generation(new_dataset=new_dataset, labels=labels)
+    train_valid_idx, test_idx = random_split(new_x)
+    feature_based_embeddings[feature_type] = node_embedding_generation(
+        new_x=new_x, labels=labels, final_correlation=final_correlation
+    )
 start2 = time.time()
 
 logger.info(
@@ -138,7 +148,7 @@ for ml_type in LEARNING:
                 labels=labels,
                 train_valid_idx=train_valid_idx,
                 test_idx=test_idx,
-                embeddings=embeddings,
+                embeddings=feature_based_embeddings,
             )
             with open(f"{EMBEDDINGS}/{ml_type}/{trial_name}/result.txt", "a") as file:
                 logger.info(f"Combination {trials}, selected parameters:")
