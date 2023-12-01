@@ -148,9 +148,7 @@ logger.info(
 )
 logger.info("SUPREME is integrating the embeddings..")
 for ml_type in LEARNING:
-    trial_combs = combine_trails(
-        ml_type=ml_type
-    )  # data modalities, move it outside loop
+    trial_combs = combine_trails(ml_type=ml_type)
     for trial_name, trial in trial_combs.items():
         path_name = f"{EMBEDDINGS}/{ml_type}/{trial_name}"
         for feature_selection_types in os.listdir(path_name):
