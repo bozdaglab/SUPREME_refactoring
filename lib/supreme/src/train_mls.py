@@ -44,13 +44,22 @@ def train_ml_model(
     files = os.listdir(EMBEDDINGS / ml_type / trial_name)
     NODE_NETWORKS2 = [files[i] for i in trial_combs[trials]]
     if len(NODE_NETWORKS2) == 1:
-        emb = embeddings[trial_name][files.index(NODE_NETWORKS2[0])]
+        emb = torch.tensor(
+            embeddings[trial_name][files.index(NODE_NETWORKS2[0])].values, device=DEVICE
+        )
     else:
+        is_first = True
         for netw_base in NODE_NETWORKS2:
-            emb = pd.DataFrame()
-            cur_emb = pd.read_csv(f"{EMBEDDINGS}/{LEARNING}/{netw_base}")
-            emb = emb.append(cur_emb)
-    emb = torch.tensor(emb.values, device=DEVICE)
+            cur_emb = pd.read_pickle(
+                f"{EMBEDDINGS}/{ml_type}/{trial_name}/{netw_base}"
+            ).values
+            if is_first:
+                emb = torch.tensor(cur_emb, device=DEVICE)
+                is_first = False
+            else:
+                emb = torch.cat(
+                    (emb, torch.tensor(cur_emb, device=DEVICE).float()), dim=1
+                )
     if ADD_RAW_FEAT is True:
         emb = add_row_features(emb=emb)
 
