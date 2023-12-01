@@ -140,10 +140,12 @@ for ml_type in LEARNING:
                 test_idx=test_idx,
                 embeddings=embeddings,
             )
-            logger.info(f"Combination {trials}, selected parameters:")
-            for key, res in final_result.items():
-                logger.info(f"{key}: {res}")
-            logger.info("Done\n")
+            with open(f"{EMBEDDINGS}/{ml_type}/{trial_name}/result.txt", "a") as file:
+                logger.info(f"Combination {trials}, selected parameters:")
+                for key, res in final_result.items():
+                    logger.info(f"{key}: {res}")
+                    file.write(f"{key}: {res}\n")
+                file.write("\n\n")
 
 
 end = time.time()
