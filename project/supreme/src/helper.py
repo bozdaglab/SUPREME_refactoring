@@ -19,7 +19,7 @@ from sklearn.feature_selection import RFE, SelectFromModel
 from sklearn.preprocessing import LabelEncoder
 from torch import Tensor
 
-DEVICE = torch.device("cpu")
+DEVICE = torch.device("cuda")
 
 
 def search_dictionary(methods_features: Dict, thr: int = 2) -> List[str]:

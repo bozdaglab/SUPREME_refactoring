@@ -31,7 +31,7 @@ from settings import (
 )
 from torch import Tensor
 
-DEVICE = torch.device("cpu")
+DEVICE = torch.device("cuda")
 
 
 def node_feature_generation(
