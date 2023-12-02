@@ -156,28 +156,31 @@ logger.info("SUPREME is integrating the embeddings..")
 for ml_type in LEARNING:
     trial_combs = combine_trails(ml_type=ml_type)
     for trial_name, trial in trial_combs.items():
-        path_name = f"{EMBEDDINGS}/{ml_type}/{trial_name}"
-        for feature_selection_types in os.listdir(path_name):
-            result_path = f"{EMBEDDINGS}/result/{feature_selection_types}"
-            if not os.path.exists(result_path):
-                os.makedirs(result_path)
-            for trials in range(len(trial)):
-                path_to_files = f"{path_name}/{feature_selection_types}"
-                final_result = train_ml_model(
-                    trial_combs=trial,
-                    trials=trials,
-                    labels=labels,
-                    train_valid_idx=train_valid_idx,
-                    test_idx=test_idx,
-                    dir_name=f"{path_name}/{feature_selection_types}",
-                )
-                with open(f"{result_path}/{trial_name}_result.txt", "a") as file:
-                    logger.info(f"Combination {trials}, selected parameters:")
-                    for key, res in final_result.items():
-                        logger.info(f"{key}: {res}")
-                        file.write(f"{key}: {res}\n")
-                    file.write("\n\n")
-                    logger.info("\n\n")
+        path_name = f"{EMBEDDINGS}\{ml_type}"
+        path_to_files = f"{path_name}/{trial_name}"
+        result_path = f"{EMBEDDINGS}/result/{trial_name}"
+        if not os.path.exists(result_path):
+            os.makedirs(result_path)
+        for idx, trials in enumerate(trial):
+            final_result = train_ml_model(
+                ml_type=ml_type,
+                trial_combs=trial,
+                trials=idx,
+                labels=labels,
+                train_valid_idx=train_valid_idx,
+                test_idx=test_idx,
+                dir_name=path_to_files,
+            )
+
+            with open(
+                f"{result_path}/{'_'.join(str(i) for i in trials)}_result.txt", "a"
+            ) as file:
+                logger.info(f"Combination {trials}, selected parameters:")
+                for key, res in final_result.items():
+                    logger.info(f"{key}: {res}")
+                    file.write(f"{key}: {res}\n")
+                file.write("\n\n")
+                logger.info("\n\n")
 
 end = time.time()
 logger.info(f"It took {round(end - start, 1)} seconds in total.")

@@ -182,6 +182,7 @@ def train_steps(
             in_size=in_size,
             hid_size=hid_size,
             out_size=out_size,
+            super_unsuper_model=model_choice,
         )
         av_valid_losses = []
         for _ in range(X_TIME2):

@@ -243,7 +243,7 @@ def select_optimizer(
 
 
 def select_model(
-    in_size: int, hid_size: int, out_size: int
+    super_unsuper_model: str, in_size: int, hid_size: int, out_size: int
 ) -> Union[SupremeClassification, SupremeClusteringLink]:
     """
     This function selects the return of the model
@@ -262,7 +262,6 @@ def select_model(
     """
     if super_unsuper_model in [
         LearningTypes.classification.name,
-        LearningTypes.regression.name,
     ]:
         model = SUPREME(in_size=in_size, hid_size=hid_size, out_size=out_size)
         return SupremeClassification(
