@@ -1,37 +1,15 @@
-from collections import namedtuple
 from typing import Optional, Union
 
 import numpy as np
 import pandas as pd
 import torch
-from helper import masking_indexes, pos_neg, random_split
-from learning_types import LearningTypes, OptimizerType, SelectModel, SuperUnsuperModel
-from module import (
-    SUPREME,
-    Discriminator,
-    Encoder,
-    EncoderDecoder,
-    EncoderEntireInput,
-    EncoderInnerProduct,
-    SupremeClassification,
-    SupremeClusteringLink,
-)
-from settings import (
-    CONTEXT_SIZE,
-    EMBEDDING_DIM,
-    SPARSE,
-    WALK_LENGHT,
-    WALK_PER_NODE,
-    P,
-    Q,
-)
+from helper import masking_indexes, random_split
+from learning_types import LearningTypes, OptimizerType
+from module import SUPREME, SupremeClassification, SupremeClusteringLink
 from sklearn.model_selection import RepeatedStratifiedKFold, train_test_split
 from torch import Tensor
 from torch.nn import Module
 from torch_geometric.data import Data
-from torch_geometric.nn import Node2Vec
-from torch_geometric.utils import negative_sampling, train_test_split_edges
-from torch_geometric.utils.num_nodes import maybe_num_nodes
 
 DEVICE = torch.device("cpu")
 EPS = 1e-15
@@ -92,9 +70,7 @@ class GCNUnsupervised:
     def __init__(self, new_x: Tensor) -> None:
         self.new_x = new_x
 
-    def prepare_data(
-        self, data_generation_types: str, edge_index: pd.DataFrame
-    ) -> Data:
+    def prepare_data(self, edge_index: pd.DataFrame) -> Data:
         """
         Create a data object by adding features, edge_index, edge_attr.
         For unsupervised GCN, this function
@@ -112,31 +88,6 @@ class GCNUnsupervised:
         if isinstance(edge_index, dict):
             edge_index = pd.DataFrame(edge_index).T
         data = make_data(new_x=self.new_x, edge_index=edge_index)
-        if data_generation_types == SelectModel.node2vec.name:
-            node2vec = Node2Vec(
-                edge_index=data.edge_index,
-                embedding_dim=EMBEDDING_DIM,
-                walk_length=WALK_LENGHT,
-                context_size=CONTEXT_SIZE,
-                walks_per_node=WALK_PER_NODE,
-                p=P,
-                q=Q,
-                sparse=SPARSE,
-            ).to(DEVICE)
-            pos, neg = node2vec.sample([10, 15])
-            data.pos_edge_labels = torch.tensor(pos.T, device=DEVICE).long()
-            data.neg_edge_labels = torch.tensor(neg.T, device=DEVICE).long()
-        elif data_generation_types == SelectModel.similarity_based.name:
-            data.pos_edge_labels = pos_neg(edge_index, "link", 1)
-            data.neg_edge_labels = pos_neg(edge_index, "link", 0)
-        elif data_generation_types == SelectModel.train_test.name:
-            data.num_nodes = maybe_num_nodes(data.edge_index)
-            data = train_test_split_edges(data=data)
-        else:
-            data.pos_edge_labels = pos_neg(edge_index, "link", 1)
-            data.neg_edge_labels = negative_sampling(
-                data.pos_edge_labels, self.new_x.size(0)
-            )
         return train_test_valid(
             data=data, train_valid_idx=train_valid_idx, test_idx=test_idx
         )
@@ -277,27 +228,14 @@ def select_optimizer(
     Return:
         Torch optimizer
     """
-    if isinstance(model, EncoderDecoder):
-        losses = namedtuple("losses", ["encoder_loss", "decoder_loss"])
-        encoder_loss = torch.optim.Adam(model.encoder.parameters(), lr=learning_rate)
-        decoder_loss = torch.optim.Adam(
-            model.discriminator.parameters(), lr=learning_rate
-        )
-        return losses(encoder_loss=encoder_loss, decoder_loss=decoder_loss)
-    elif isinstance(model, EncoderInnerProduct):
-        return torch.optim.Adam(model.encoder.parameters(), lr=learning_rate)
-
-    elif isinstance(model, EncoderEntireInput):
-        losses = namedtuple("losses", ["encoder_loss", "decoder_loss"])
-        encoder_loss = torch.optim.Adam(model.encoder.parameters(), lr=learning_rate)
-        decoder_loss = torch.optim.Adam(model.decoder.parameters(), lr=learning_rate)
-        return losses(encoder_loss=encoder_loss, decoder_loss=decoder_loss)
     if optimizer_type == OptimizerType.sgd.name:
         return torch.optim.SGD(
             model.parameters(), lr=learning_rate, weight_decay=0.001, momentum=0.9
         )
     elif optimizer_type == OptimizerType.adam.name:
-        return torch.optim.Adam(model.model.parameters(), lr=learning_rate)
+        return torch.optim.Adam(
+            model.model.parameters(), lr=learning_rate, weight_decay=0.001
+        )
     elif optimizer_type == OptimizerType.sparse_adam.name:
         return torch.optim.SparseAdam(list(model.parameters()), lr=learning_rate)
     else:
@@ -305,8 +243,8 @@ def select_optimizer(
 
 
 def select_model(
-    super_unsuper_model: str, in_size: int, hid_size: int, out_size: int
-) -> Union[SupremeClassification, EncoderDecoder, EncoderInnerProduct]:
+    in_size: int, hid_size: int, out_size: int
+) -> Union[SupremeClassification, SupremeClusteringLink]:
     """
     This function selects the return of the model
 
@@ -331,21 +269,5 @@ def select_model(
             model=model, super_unsuper_model=super_unsuper_model
         )
     else:
-        if super_unsuper_model == SuperUnsuperModel.discriminator.name:
-            encoder = Encoder(in_size=in_size, hid_size=hid_size, out_size=out_size)
-            discriminator = Discriminator(
-                in_size=in_size, hid_size=hid_size, out_size=out_size
-            )
-            return EncoderDecoder(encoder=encoder, discriminator=discriminator)
-        elif super_unsuper_model == SuperUnsuperModel.linkprediction.name:
-            model = SUPREME(in_size=in_size, hid_size=hid_size, out_size=out_size)
-            return SupremeClusteringLink(model=model)
-        elif super_unsuper_model == SuperUnsuperModel.encoderinproduct.name:
-            encoder = SUPREME(in_size=in_size, hid_size=hid_size, out_size=out_size)
-            return EncoderInnerProduct(encoder=encoder)
-        else:
-            encoder = SUPREME(in_size=in_size, hid_size=hid_size, out_size=out_size)
-            decoder = Discriminator(
-                in_size=in_size, hid_size=hid_size, out_size=out_size
-            )
-            return EncoderEntireInput(encoder=encoder, decoder=decoder)
+        model = SUPREME(in_size=in_size, hid_size=hid_size, out_size=out_size)
+        return SupremeClusteringLink(model=model)
