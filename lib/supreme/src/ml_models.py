@@ -436,3 +436,6 @@ class ClusteringModels:
 
     def SPC(self):
         return SpectralClustering(n_clusters=5).fit(self.x_train), "Add_best_later"
+
+
+# ["SPC","AGC", "KM", "APF"]

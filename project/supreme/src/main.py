@@ -5,7 +5,7 @@ import sys
 import time
 import warnings
 from collections import defaultdict
-from itertools import combinations
+from itertools import combinations, product
 from typing import List
 
 import pandas as pd
@@ -21,6 +21,7 @@ from settings import (
     LABELS,
     LEARNING,
     SELECTION_METHOD,
+    STAT_METHOD,
 )
 from sklearn.preprocessing import LabelEncoder
 from train_mls import train_ml_model
@@ -127,40 +128,44 @@ start = time.time()
 new_dataset, labels = set_same_users(
     sample_data=sample_data, users=users, labels=labels
 )
-final_correlation = similarity_matrix_generation(new_dataset=new_dataset)
-logger.info("SUPREME is running..")
-if isinstance(labels, pd.Series):
-    for feature_type in SELECTION_METHOD:
-        new_x = node_feature_generation(
-            new_dataset=new_dataset, labels=labels, feature_type=feature_type
-        )
+
+for stat in STAT_METHOD:
+    final_correlation = similarity_matrix_generation(new_dataset=new_dataset, stat=stat)
+    logger.info("SUPREME is running..")
+    if isinstance(labels, pd.Series):
+        for feature_type in SELECTION_METHOD:
+            new_x = node_feature_generation(
+                new_dataset=new_dataset, labels=labels, feature_type=feature_type
+            )
+            train_valid_idx, test_idx = random_split(new_x)
+            node_embedding_generation(
+                new_x=new_x,
+                labels=labels,
+                final_correlation=final_correlation,
+                stat=stat,
+                feature_type=feature_type,
+            )
+    else:
+        new_x = node_feature_generation(new_dataset=new_dataset, labels=labels)
         train_valid_idx, test_idx = random_split(new_x)
         node_embedding_generation(
-            new_x=new_x,
-            labels=labels,
-            final_correlation=final_correlation,
-            feature_type=feature_type,
+            new_x=new_x, labels=labels, final_correlation=final_correlation
         )
-else:
-    new_x = node_feature_generation(new_dataset=new_dataset, labels=labels)
-    train_valid_idx, test_idx = random_split(new_x)
-    node_embedding_generation(
-        new_x=new_x, labels=labels, final_correlation=final_correlation
-    )
 start2 = time.time()
 
 logger.info(
     f"It took {str(round(start2 - start, 1))} seconds for node embedding generation"
 )
 logger.info("SUPREME is integrating the embeddings..")
-for ml_type in LEARNING:
-    trial_combs = combine_trails(ml_type=ml_type)
+for ml_type, stat in product(LEARNING, STAT_METHOD):
+    trial_combs = combine_trails(ml_type=f"{ml_type}/{stat}")
     for trial_name, trial in trial_combs.items():
         path_name = f"{EMBEDDINGS}\{ml_type}"
-        path_to_files = f"{path_name}/{trial_name}"
-        result_path = f"{EMBEDDINGS}/result/{trial_name}"
+        path_to_files = f"{path_name}/{stat}/{trial_name}"
+        result_path = f"{EMBEDDINGS}/result/{stat}/{trial_name}"
         if not os.path.exists(result_path):
             os.makedirs(result_path)
+        logger.info(f"Similarity stat: {stat}")
         for idx, trials in enumerate(trial):
             final_result = train_ml_model(
                 ml_type=ml_type,

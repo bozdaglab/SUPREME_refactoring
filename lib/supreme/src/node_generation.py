@@ -76,6 +76,7 @@ def node_embedding_generation(
     new_x: Tensor,
     labels: Optional[pd.DataFrame],
     final_correlation: Dict,
+    stat: str,
     feature_type: Optional[str] = None,
 ) -> None:
     """
@@ -93,18 +94,16 @@ def node_embedding_generation(
         Generate embeddings for each omic
     """
 
-    if not os.path.exists(EMBEDDINGS):
-        os.mkdir(EMBEDDINGS)
     for model_choice in LEARNING:
-        emb_path = EMBEDDINGS / model_choice
-        if not os.path.exists(emb_path):
-            os.mkdir(emb_path)
+        # emb_path = EMBEDDINGS / model_choice / stat
+        # if not os.path.exists(emb_path):
+        #     os.makedirs(emb_path)
         if isinstance(feature_type, list):
             feature_type = "_".join(feature_type)
         learning_model = load_model(new_x=new_x, labels=labels, model=model_choice)
         for name, edge_index in final_correlation.items():
             if model_choice == LearningTypes.clustering.name:
-                dir_path = f"{EMBEDDINGS}/{model_choice}/{feature_type}"
+                dir_path = f"{EMBEDDINGS}/{model_choice}/{stat}/{feature_type}"
                 if not os.path.exists(dir_path):
                     os.makedirs(dir_path)
                 list_dir = os.listdir(dir_path)

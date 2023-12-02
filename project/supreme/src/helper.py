@@ -14,7 +14,7 @@ from learning_types import FeatureSelectionType
 from mlxtend.feature_selection import SequentialFeatureSelector
 from pre_processings import pre_processing
 from scipy.stats import pearsonr, spearmanr
-from settings import EDGES, STAT_METHOD
+from settings import EDGES
 from sklearn.feature_selection import RFE, SelectFromModel
 from sklearn.preprocessing import LabelEncoder
 from torch import Tensor
@@ -119,22 +119,23 @@ def drop_rows(application_train: pd.DataFrame, gh: List[str]) -> pd.DataFrame:
     return application_train[gh].reset_index(drop=True)
 
 
-def similarity_matrix_generation(new_dataset: Dict) -> Dict:
+def similarity_matrix_generation(new_dataset: Dict, stat: str) -> Dict:
     # parqua dataset, parallel
     final_correlation = defaultdict()
-    if not os.path.exists(EDGES):
-        os.mkdir(EDGES)
-    file_names = os.listdir(EDGES)
+    path_dir = EDGES / stat
+    if not os.path.exists(path_dir):
+        os.makedirs(path_dir)
+    file_names = os.listdir(path_dir)
     if file_names:
         for file in file_names:
-            final_correlation[file.split(".")[0]] = pd.read_pickle(f"{EDGES}/{file}")
+            final_correlation[file.split(".")[0]] = pd.read_pickle(f"{path_dir}/{file}")
         return final_correlation
 
     for file_name, data in new_dataset.items():
         correlation_dictionary = defaultdict()
         if nan_checker(data):
             data = pre_processing(data=data)
-        stat_model = get_stat_methos(STAT_METHOD)
+        stat_model = get_stat_methos(stat)
         for ind_i, patient_1 in data.iterrows():
             for ind_j, patient_2 in data[ind_i + 1 :].iterrows():
                 similarity_score = stat_model(
@@ -150,7 +151,7 @@ def similarity_matrix_generation(new_dataset: Dict) -> Dict:
         pd.DataFrame(
             correlation_dictionary.values(),
             columns=list(correlation_dictionary.items())[0][1].keys(),
-        ).to_pickle(EDGES / f"similarity_{file_name}.pkl")
+        ).to_pickle(path_dir / f"similarity_{file_name}.pkl")
     return final_correlation
 
 
