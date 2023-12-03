@@ -106,7 +106,7 @@ def get_stat_methos(stat_method: str):
 def set_same_users(sample_data: Dict, users: Dict, labels: Dict) -> Dict:
     new_dataset = defaultdict()
     shared_users = search_dictionary(users, len(users) - 1)
-    shared_users = sorted(shared_users)[:30]
+    shared_users = sorted(shared_users)
     shared_users_encoded = LabelEncoder().fit_transform(shared_users)
     for file_name, data in sample_data.items():
         new_dataset[file_name] = data[data.index.isin(shared_users)].set_index(
@@ -138,9 +138,12 @@ def similarity_matrix_generation(new_dataset: Dict, stat: str) -> Dict:
         stat_model = get_stat_methos(stat)
         for ind_i, patient_1 in data.iterrows():
             for ind_j, patient_2 in data[ind_i + 1 :].iterrows():
-                similarity_score = stat_model(
-                    patient_1.values, patient_2.values
-                ).statistic
+                try:
+                    similarity_score = stat_model(
+                        patient_1.values, patient_2.values
+                    ).statistic
+                except AttributeError:
+                    similarity_score = stat_model(patient_1.values, patient_2.values)[0]
                 correlation_dictionary[f"{ind_i}_{ind_j}"] = {
                     "Patient_1": ind_i,
                     "Patient_2": ind_j,
