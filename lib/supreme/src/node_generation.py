@@ -31,7 +31,7 @@ from settings import (
 )
 from torch import Tensor
 
-DEVICE = torch.device("cuda")
+DEVICE = torch.device("cpu")
 
 
 def node_feature_generation(
@@ -53,12 +53,13 @@ def node_feature_generation(
     is_first = True
     for _, feat in new_dataset.items():
         if row_col_ratio(feat):
-            feat = feat[feat.columns[0:300]]
             if nan_checker(feat):
                 feat = pre_processing(feat)
             feat = select_features(
                 application_train=feat, labels=labels, feature_type=feature_type
             )
+            if not any(feat):
+                continue
             values = torch.tensor(feat.values, device=DEVICE)
         else:
             values = feat.values

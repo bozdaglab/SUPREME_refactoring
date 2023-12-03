@@ -198,24 +198,21 @@ class MLModels:
         )
 
     def RF(self):
-        # max_depth = [int(x) for x in np.linspace(10, 110, num=11)]
-        # max_depth.append(None)
-        # params = {
-        #     "n_estimators": [int(x) for x in np.linspace(start=200, stop=2000, num=100)]
-        # }
-        # search = RandomizedSearchCV(
-        #     estimator=RandomForestClassifier(),
-        #     return_train_score=True,
-        #     scoring="f1_macro",
-        #     param_distributions=params,
-        #     cv=4,
-        #     n_iter=X_TIME,
-        #     verbose=0,
-        # )
-        # search.fit(self.x_train, self.y_train)
-        return RandomForestClassifier(n_estimators=10)  # ,
-        # search,
-        # )
+        max_depth = [int(x) for x in np.linspace(10, 110, num=11)]
+        max_depth.append(None)
+        params = {
+            "n_estimators": [int(x) for x in np.linspace(start=50, stop=50, num=50)]
+        }
+        search = RandomizedSearchCV(
+            estimator=RandomForestClassifier(),
+            return_train_score=True,
+            scoring="f1_macro",
+            param_distributions=params,
+            cv=4,
+            n_iter=X_TIME,
+            verbose=0,
+        )
+        return search.fit(self.x_train, self.y_train), search
 
     def SVM(self):
         params = {

@@ -8,7 +8,7 @@ from torch_geometric.nn import GCNConv
 
 load_dotenv(find_dotenv())
 
-DEVICE = torch.device("cuda")
+DEVICE = torch.device("cpu")
 MAX_LOGSTD = 10
 EPS = 1e-15
 

@@ -11,7 +11,7 @@ from torch import Tensor
 from torch.nn import Module
 from torch_geometric.data import Data
 
-DEVICE = torch.device("cuda")
+DEVICE = torch.device("cpu")
 EPS = 1e-15
 
 

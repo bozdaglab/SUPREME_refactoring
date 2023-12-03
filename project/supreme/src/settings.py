@@ -15,20 +15,20 @@ OPTIONAL_FEATURE_SELECTION = bool(
 )
 INT_MOTHOD_CLUSTERING = json.loads(os.environ.get("INT_MOTHOD_CLUSTERING"))
 INT_MOTHOD_CLASSIFICATION = os.environ.get("INT_MOTHOD_CLASSIFICATION")
-NUMBER_FEATURES = [20]
-X_ITER = 20
+NUMBER_FEATURES = [50, 70, 150, 200, 350, 400, 500]
+X_ITER = 30
 SELECTION_METHOD = [
-    # "pearson",
-    # "lasso",
-    # "RFE",
-    # "SelectFromModel",
-    # "SequentialFeatureSelector",
-    # "SelectBySingleFeaturePerformance",
-    # "SelectByShuffling",
-    # "GeneticSelectionCV",
+    "pearson",
+    "lasso",
+    "RFE",
+    "SelectFromModel",
     "BorutaPy",
-    ["BorutaPy", "pearson"],
+    ["BorutaPy", "pearson", "lasso", "RFE", "SelectFromModel"],
 ]
+#    "SelectBySingleFeaturePerformance",
+# "SelectByShuffling",
+#  "GeneticSelectionCV",
+#  "SequentialFeatureSelector",
 MODELS_B = ["RF"]
 UNSUPERVISED_MODELS = json.loads(os.environ.get("UNSUPERVISED_MODELS"))
 POS_NEG_MODELS = json.loads(os.environ.get("POS_NEG_MODELS"))

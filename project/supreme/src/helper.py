@@ -19,7 +19,7 @@ from sklearn.feature_selection import RFE, SelectFromModel
 from sklearn.preprocessing import LabelEncoder
 from torch import Tensor
 
-DEVICE = torch.device("cuda")
+DEVICE = torch.device("cpu")
 
 
 def search_dictionary(methods_features: Dict, thr: int = 2) -> List[str]:
@@ -245,5 +245,5 @@ def load_models2(
             n_estimators="auto",
             verbose=2,
             random_state=42,
-            max_iter=5,
+            max_iter=50,
         )
