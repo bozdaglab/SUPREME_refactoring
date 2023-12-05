@@ -185,7 +185,7 @@ def train_test_valid(
         data.test_mask = torch.tensor(
             masking_indexes(data=data, indexes=test_idx), device=DEVICE
         )
-    except KeyError:
+    except (KeyError, TypeError):
         data.test_mask = torch.tensor(
             masking_indexes(data=data, indexes=test_idx.indices), device=DEVICE
         )

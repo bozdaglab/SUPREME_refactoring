@@ -106,7 +106,7 @@ def get_stat_methos(stat_method: str):
 def set_same_users(sample_data: Dict, users: Dict, labels: Dict) -> Dict:
     new_dataset = defaultdict()
     shared_users = search_dictionary(users, len(users) - 1)
-    shared_users = sorted(shared_users)
+    shared_users = sorted(shared_users)[0:100]
     shared_users_encoded = LabelEncoder().fit_transform(shared_users)
     for file_name, data in sample_data.items():
         new_dataset[file_name] = data[data.index.isin(shared_users)].set_index(
@@ -154,13 +154,13 @@ def similarity_matrix_generation(
                         "link": 1 if similarity_score > thr else 0,
                     }
 
-        final_correlation[file_name] = correlation_dictionary
+        # final_correlation[file_name] = correlation_dictionary
 
         pd.DataFrame(
             correlation_dictionary.values(),
             columns=list(correlation_dictionary.items())[0][1].keys(),
-        ).to_pickle(path_dir / f"similarity_{file_name}.pkl")
-    return final_correlation
+        ).to_pickle(EDGES / f"similarity_{file_name}.pkl")
+    # return final_correlation
 
 
 def load_models1(
