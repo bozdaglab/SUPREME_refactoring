@@ -35,7 +35,7 @@ from torch import Tensor
 DEVICE = torch.device("cpu")
 
 
-@ray.remote
+@ray.remote(num_cpus=os.cpu_count())
 def node_feature_generation(
     new_dataset: Dict,
     labels: Dict,

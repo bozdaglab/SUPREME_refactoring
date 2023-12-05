@@ -159,8 +159,8 @@ def similarity_matrix_generation(
         pd.DataFrame(
             correlation_dictionary.values(),
             columns=list(correlation_dictionary.items())[0][1].keys(),
-        ).to_pickle(EDGES / f"similarity_{file_name}.pkl")
-    # return final_correlation
+        ).to_pickle(path_dir / f"similarity_{file_name}.pkl")
+    return None
 
 
 def load_models1(

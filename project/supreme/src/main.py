@@ -131,18 +131,20 @@ new_dataset, labels = set_same_users(
 )
 
 
-@ray.remote
+@ray.remote(num_cpus=os.cpu_count())
 def compute_similarity(stat, new_dataset):
     similarity_matrix_generation(new_dataset=new_dataset, stat=stat)
 
 
-for stat in STAT_METHOD:
-    compute_similarity.remote(stat, new_dataset)
+similarity_result_ray = [
+    compute_similarity.remote(stat, new_dataset) for stat in STAT_METHOD
+]
+ray.wait(similarity_result_ray)
 
 logger.info("SUPREME is running..")
 path_features = DATA.parent / "selected_features"
 path_embeggings = DATA.parent / "selected_features_embeddings"
-for feature_type in SELECTION_METHOD:
+embeddings_result_ray = [
     node_feature_generation.remote(
         new_dataset=new_dataset,
         labels=labels,
@@ -150,7 +152,10 @@ for feature_type in SELECTION_METHOD:
         path_features=path_features,
         path_embeggings=path_embeggings,
     )
+    for feature_type in SELECTION_METHOD
+]
 
+ray.wait(embeddings_result_ray)
 
 for stat in os.listdir(EDGES):
     final_correlation = defaultdict()
