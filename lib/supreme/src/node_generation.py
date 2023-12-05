@@ -55,7 +55,6 @@ def node_feature_generation(
     for _, feat in new_dataset.items():
         if row_col_ratio(feat):
             if nan_checker(feat):
-                feat = feat[feat.columns[0:400]]
                 feat = pre_processing(feat)
             feat, final_features = select_features(
                 application_train=feat, labels=labels, feature_type=feature_type
