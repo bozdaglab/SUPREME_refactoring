@@ -192,9 +192,9 @@ def select_features(
             ml_model_train=ml_model_train,
         )
     if final_features:
-        return drop_rows(application_train, final_features)
+        return drop_rows(application_train, final_features), final_features
     # application_train = all_methods.mutual_information(application_train, y)
-    return []
+    return [], []
 
 
 def apply_features_selections(

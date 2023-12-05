@@ -22,7 +22,6 @@ class GCNSupervised:
 
     def prepare_data(
         self,
-        data_generation_types: Optional[str],
         edge_index: pd.DataFrame,
         col: Optional[str] = None,
         multi_labels: bool = False,
@@ -43,6 +42,8 @@ class GCNSupervised:
             A data object ready to pass to GCN
         """
         train_valid_idx, test_idx = random_split(new_x=self.new_x)
+        if isinstance(edge_index, dict):
+            edge_index = pd.DataFrame(edge_index).T
         data = make_data(new_x=self.new_x, edge_index=edge_index)
         if multi_labels:
             data.y = torch.tensor(self.labels[col].values, dtype=torch.float32)

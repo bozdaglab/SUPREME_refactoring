@@ -51,13 +51,16 @@ def node_feature_generation(
         Concatenated features from different omics file
     """
     is_first = True
+    selected_features = []
     for _, feat in new_dataset.items():
         if row_col_ratio(feat):
             if nan_checker(feat):
+                feat = feat[feat.columns[0:400]]
                 feat = pre_processing(feat)
-            feat = select_features(
+            feat, final_features = select_features(
                 application_train=feat, labels=labels, feature_type=feature_type
             )
+            selected_features.extend(final_features)
             if not any(feat):
                 continue
             values = torch.tensor(feat.values, device=DEVICE)
@@ -70,7 +73,7 @@ def node_feature_generation(
             new_x = torch.cat(
                 (new_x, torch.tensor(values, device=DEVICE).float()), dim=1
             )
-    return new_x
+    return new_x, selected_features
 
 
 def node_embedding_generation(

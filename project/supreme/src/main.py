@@ -134,9 +134,27 @@ for stat in STAT_METHOD:
     logger.info("SUPREME is running..")
     if isinstance(labels, pd.Series):
         for feature_type in SELECTION_METHOD:
-            new_x = node_feature_generation(
+            path_features = DATA.parent / "selected_features"
+            path_embeggings = DATA.parent / "selected_features_embeddings"
+            # files_features = os.listdir(path_embeggings)
+            # if files_features:
+            #     new_x = pd.read_pickle(path_embeggings/files_features[0])
+
+            # else:
+            new_x, selected_features = node_feature_generation(
                 new_dataset=new_dataset, labels=labels, feature_type=feature_type
             )
+            if not os.path.exists(path_features):
+                os.makedirs(path_features)
+            pd.DataFrame(selected_features).to_pickle(
+                path_features / f"selected_features_{feature_type}.pkl"
+            )
+            if not os.path.exists(path_embeggings):
+                os.makedirs(path_embeggings)
+            pd.DataFrame(new_x).to_pickle(
+                path_embeggings / f"embeddings_{feature_type}.pkl"
+            )
+
             train_valid_idx, test_idx = random_split(new_x)
             node_embedding_generation(
                 new_x=new_x,

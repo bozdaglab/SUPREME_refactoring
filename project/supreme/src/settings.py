@@ -15,23 +15,24 @@ OPTIONAL_FEATURE_SELECTION = bool(
 )
 INT_MOTHOD_CLUSTERING = json.loads(os.environ.get("INT_MOTHOD_CLUSTERING"))
 INT_MOTHOD_CLASSIFICATION = os.environ.get("INT_MOTHOD_CLASSIFICATION")
-NUMBER_FEATURES = [50, 70, 150, 200, 350, 400, 500]
+NUMBER_FEATURES = [50]
 X_ITER = 30
 SELECTION_METHOD = [
-    "pearson",
-    "lasso",
+    # "lasso",
     "RFE",
     "SelectFromModel",
     "BorutaPy",
-    ["BorutaPy", "pearson", "lasso", "RFE", "SelectFromModel"],
+    "pearson",
+    ["BorutaPy", "pearson", "RFE", "SelectFromModel"],
 ]
+# ]
 #    "SelectBySingleFeaturePerformance",
 # "SelectByShuffling",
 #  "GeneticSelectionCV",
 #  "SequentialFeatureSelector",
 MODELS_B = ["RF"]
-UNSUPERVISED_MODELS = json.loads(os.environ.get("UNSUPERVISED_MODELS"))
-POS_NEG_MODELS = json.loads(os.environ.get("POS_NEG_MODELS"))
+# UNSUPERVISED_MODELS = json.loads(os.environ.get("UNSUPERVISED_MODELS"))
+# POS_NEG_MODELS = json.loads(os.environ.get("POS_NEG_MODELS"))
 LOGGING_LEVEL = os.environ.get("LOGGING_LEVEL")
 IMPUTER_NAME_SUBSET = os.environ.get("IMPUTER_NAME_SUBSET")
 IMPUTER_NAME_WHOLE = os.environ.get("IMPUTER_NAME_WHOLE")

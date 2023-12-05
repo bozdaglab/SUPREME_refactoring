@@ -106,7 +106,7 @@ def get_stat_methos(stat_method: str):
 def set_same_users(sample_data: Dict, users: Dict, labels: Dict) -> Dict:
     new_dataset = defaultdict()
     shared_users = search_dictionary(users, len(users) - 1)
-    shared_users = sorted(shared_users)
+    shared_users = sorted(shared_users)[0:100]
     shared_users_encoded = LabelEncoder().fit_transform(shared_users)
     for file_name, data in sample_data.items():
         new_dataset[file_name] = data[data.index.isin(shared_users)].set_index(
@@ -119,7 +119,9 @@ def drop_rows(application_train: pd.DataFrame, gh: List[str]) -> pd.DataFrame:
     return application_train[gh].reset_index(drop=True)
 
 
-def similarity_matrix_generation(new_dataset: Dict, stat: str) -> Dict:
+def similarity_matrix_generation(
+    new_dataset: Dict, stat: str, thr: float = 0.60
+) -> Dict:
     # parqua dataset, parallel
     final_correlation = defaultdict()
     path_dir = EDGES / stat
@@ -144,11 +146,14 @@ def similarity_matrix_generation(new_dataset: Dict, stat: str) -> Dict:
                     ).statistic
                 except AttributeError:
                     similarity_score = stat_model(patient_1.values, patient_2.values)[0]
-                correlation_dictionary[f"{ind_i}_{ind_j}"] = {
-                    "Patient_1": ind_i,
-                    "Patient_2": ind_j,
-                    "Similarity Score": similarity_score,
-                }
+                if similarity_score > 0.0:
+                    correlation_dictionary[f"{ind_i}_{ind_j}"] = {
+                        "Patient_1": ind_i,
+                        "Patient_2": ind_j,
+                        "Similarity Score": similarity_score,
+                        "link": 1 if similarity_score > thr else 0,
+                    }
+
         final_correlation[file_name] = correlation_dictionary
 
         pd.DataFrame(
@@ -248,5 +253,5 @@ def load_models2(
             n_estimators="auto",
             verbose=2,
             random_state=42,
-            max_iter=50,
+            max_iter=10,
         )
