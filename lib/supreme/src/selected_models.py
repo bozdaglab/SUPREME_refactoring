@@ -6,6 +6,7 @@ import torch
 from helper import masking_indexes, random_split
 from learning_types import LearningTypes, OptimizerType
 from module import SUPREME, SupremeClassification, SupremeClusteringLink
+from settings import CNA, METHYLATION, MICRO
 from sklearn.model_selection import RepeatedStratifiedKFold, train_test_split
 from torch import Tensor
 from torch.nn import Module
@@ -16,7 +17,7 @@ EPS = 1e-15
 
 
 class GCNSupervised:
-    def __init__(self, new_x: Tensor, labels) -> None:
+    def __init__(self, new_x: Tensor, labels, name: str = None) -> None:
         self.new_x = new_x
         self.labels = labels
 
@@ -71,7 +72,7 @@ class GCNUnsupervised:
     def __init__(self, new_x: Tensor) -> None:
         self.new_x = new_x
 
-    def prepare_data(self, edge_index: pd.DataFrame) -> Data:
+    def prepare_data(self, edge_index: pd.DataFrame, name: str) -> Data:
         """
         Create a data object by adding features, edge_index, edge_attr.
         For unsupervised GCN, this function
@@ -88,6 +89,23 @@ class GCNUnsupervised:
         train_valid_idx, test_idx = random_split(new_x=self.new_x)
         if isinstance(edge_index, dict):
             edge_index = pd.DataFrame(edge_index).T
+        file_name = name.split("/")[-1]
+        if "similarity_data_methylation" in file_name:
+            thr = METHYLATION
+            edge_index["link"] = [
+                1 if i > thr else 0 for i in edge_index["Similarity Score"]
+            ]
+        elif "similarity_data_mrna" in file_name:
+            thr = MICRO
+            edge_index["link"] = [
+                1 if i < thr else 0 for i in edge_index["Similarity Score"]
+            ]
+        elif "similarity_data_cna" in file_name:
+            thr = CNA
+            edge_index["link"] = [
+                1 if i < thr else 0 for i in edge_index["Similarity Score"]
+            ]
+
         data = make_data(new_x=self.new_x, edge_index=edge_index)
         return train_test_valid(
             data=data, train_valid_idx=train_valid_idx, test_idx=test_idx

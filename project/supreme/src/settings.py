@@ -30,6 +30,10 @@ SELECTION_METHOD = [
 # "SelectByShuffling",
 #  "GeneticSelectionCV",
 #  "SequentialFeatureSelector",
+CLINICAL = float(os.environ.get("CLINICAL"))
+METHYLATION = float(os.environ.get("METHYLATION"))
+MICRO = float(os.environ.get("MICRO"))
+CNA = float(os.environ.get("CNA"))
 MODELS_B = ["RF"]
 # UNSUPERVISED_MODELS = json.loads(os.environ.get("UNSUPERVISED_MODELS"))
 # POS_NEG_MODELS = json.loads(os.environ.get("POS_NEG_MODELS"))

@@ -27,6 +27,7 @@ from settings import (
 from sklearn.preprocessing import LabelEncoder
 from train_mls import train_ml_model
 
+DEVICE = torch.device("cpu")
 load_dotenv(find_dotenv())
 LIB = os.environ.get("LIB")
 PROJECT = os.environ.get("PROJECT")
@@ -130,65 +131,59 @@ new_dataset, labels = set_same_users(
     sample_data=sample_data, users=users, labels=labels
 )
 
-# for stat in STAT_METHOD:
-#     final_correlation = similarity_matrix_generation(new_dataset=new_dataset, stat=stat)
-#     logger.info("SUPREME is running..")
-#     if isinstance(labels, pd.Series):
-#         for feature_type in SELECTION_METHOD:
-#             path_features = DATA.parent / "selected_features"
-#             path_embeggings = DATA.parent / "selected_features_embeddings"
-#             # files_features = os.listdir(path_embeggings)
-#             # if files_features:
-#             #     new_x = pd.read_pickle(path_embeggings/files_features[0])
+for stat in STAT_METHOD:
+    final_correlation = similarity_matrix_generation(new_dataset=new_dataset, stat=stat)
+    logger.info("SUPREME is running..")
+    if isinstance(labels, pd.Series):
+        for feature_type in SELECTION_METHOD:
+            path_features = DATA.parent / "selected_features"
+            path_embeggings = DATA.parent / "selected_features_embeddings"
+            if os.listdir(path_embeggings):
+                f = True
+                for i in os.listdir(path_embeggings):
+                    feat = pd.read_pickle(path_embeggings / i)
+                    if f:
+                        new_x = torch.tensor(feat.values, device=DEVICE).float()
+                        f = False
+                    else:
+                        new_x = torch.cat(
+                            (new_x, torch.tensor(feat.values, device=DEVICE).float()),
+                            dim=1,
+                        )
+            else:
+                new_x, selected_features = node_feature_generation(
+                    new_dataset=new_dataset, labels=labels, feature_type=feature_type
+                )
+                if not os.path.exists(path_features):
+                    os.makedirs(path_features)
+                pd.DataFrame(selected_features).to_pickle(
+                    path_features / f"selected_features_{feature_type}.pkl"
+                )
+                if not os.path.exists(path_embeggings):
+                    os.makedirs(path_embeggings)
+                pd.DataFrame(new_x).to_pickle(
+                    path_embeggings / f"embeddings_{feature_type}.pkl"
+                )
 
-#             # else:
-#             new_x, selected_features = node_feature_generation(
-#                 new_dataset=new_dataset, labels=labels, feature_type=feature_type
-#             )
-#             if not os.path.exists(path_features):
-#                 os.makedirs(path_features)
-#             pd.DataFrame(selected_features).to_pickle(
-#                 path_features / f"selected_features_{feature_type}.pkl"
-#             )
-#             if not os.path.exists(path_embeggings):
-#                 os.makedirs(path_embeggings)
-#             pd.DataFrame(new_x).to_pickle(
-#                 path_embeggings / f"embeddings_{feature_type}.pkl"
-#             )
-
-#             train_valid_idx, test_idx = random_split(new_x)
-#             node_embedding_generation(
-#                 new_x=new_x,
-#                 labels=labels,
-#                 final_correlation=final_correlation,
-#                 stat=stat,
-#                 feature_type=feature_type,
-#             )
-#     else:
-#         new_x = node_feature_generation(new_dataset=new_dataset, labels=labels)
-#         train_valid_idx, test_idx = random_split(new_x)
-#         node_embedding_generation(
-#             new_x=new_x, labels=labels, final_correlation=final_correlation
-#         )
-# start2 = time.time()
-
-# logger.info(
-#     f"It took {str(round(start2 - start, 1))} seconds for node embedding generation"
-# )
-
-path_embeggings = DATA.parent / "selected_features_embeddings"
-f = True
-DEVICE = torch.device("cpu")
-for i in os.listdir(path_embeggings):
-    feat = pd.read_pickle(path_embeggings / i)
-    if f:
-        new_x = torch.tensor(feat.values, device=DEVICE).float()
-        f = False
+            train_valid_idx, test_idx = random_split(new_x)
+            node_embedding_generation(
+                new_x=new_x,
+                labels=labels,
+                final_correlation=final_correlation,
+                stat=stat,
+                feature_type=feature_type,
+            )
     else:
-        new_x = torch.cat(
-            (new_x, torch.tensor(feat.values, device=DEVICE).float()), dim=1
+        new_x = node_feature_generation(new_dataset=new_dataset, labels=labels)
+        train_valid_idx, test_idx = random_split(new_x)
+        node_embedding_generation(
+            new_x=new_x, labels=labels, final_correlation=final_correlation
         )
-train_valid_idx, test_idx = random_split(new_x)
+start2 = time.time()
+
+logger.info(
+    f"It took {str(round(start2 - start, 1))} seconds for node embedding generation"
+)
 logger.info("SUPREME is integrating the embeddings..")
 for ml_type, stat in product(LEARNING, STAT_METHOD):
     trial_combs = combine_trails(ml_type=f"{ml_type}/{stat}")

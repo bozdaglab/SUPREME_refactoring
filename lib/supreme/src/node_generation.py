@@ -5,7 +5,6 @@ from typing import Dict, Optional, Union
 
 import numpy as np
 import pandas as pd
-import ray
 import torch
 from feature_selections import select_features
 from helper import nan_checker, row_col_ratio
@@ -73,7 +72,7 @@ def node_feature_generation(
             new_x = torch.cat(
                 (new_x, torch.tensor(values, device=DEVICE).float()), dim=1
             )
-    return new_x
+    return new_x, selected_features
 
 
 def node_embedding_generation(
@@ -176,7 +175,7 @@ def train_steps(
     This function craete the loss funciton, train and validate the model
     """
 
-    data = learning_model.prepare_data(edge_index=edge_index)
+    data = learning_model.prepare_data(edge_index=edge_index, name=name)
     best_ValidLoss = np.Inf
     out_size = learning_model.model_loss_output(model_choice=model_choice)
     in_size = data.x.shape[1]
@@ -188,11 +187,14 @@ def train_steps(
             super_unsuper_model=model_choice,
         )
         av_valid_losses = []
-        for _ in range(X_TIME2):
+        for it in range(X_TIME2):
             optimizer = select_optimizer(OPTIM, model, learning_rate)
             min_valid_loss = np.Inf
             patience_count = 0
             for epoch in range(MAX_EPOCHS):
+                print(
+                    f"learning_rate: {learning_rate}, hid_size: {hid_size}, iteration: {it}, epoch: {epoch}"
+                )
                 model.train(optimizer, data)
                 this_valid_loss, emb = model.validate(data=data)
                 if this_valid_loss < min_valid_loss:
@@ -210,4 +212,5 @@ def train_steps(
         if av_valid_loss < best_ValidLoss:
             best_ValidLoss = av_valid_loss
             selected_emb = this_emb
+    name = name.replace("similarity_data", "embeddings_data")
     pd.DataFrame(selected_emb).to_pickle(f"{name}")
