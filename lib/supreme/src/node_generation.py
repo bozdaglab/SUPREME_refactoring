@@ -104,17 +104,18 @@ def node_embedding_generation(
         if isinstance(feature_type, list):
             feature_type = "_".join(feature_type)
         learning_model = load_model(new_x=new_x, labels=labels, model=model_choice)
+        dir_path = f"{EMBEDDINGS}/{model_choice}/{stat}/{feature_type}"
+        if not os.path.exists(dir_path):
+            os.makedirs(dir_path)
         for name, edge_index in final_correlation.items():
+            name_ = f"{name}.pkl"
+            name_dir = f"{dir_path}/{name_}"
             if model_choice == LearningTypes.clustering.name:
-                dir_path = f"{EMBEDDINGS}/{model_choice}/{stat}/{feature_type}"
-                if not os.path.exists(dir_path):
-                    os.makedirs(dir_path)
                 list_dir = os.listdir(dir_path)
-                name_ = f"{name}.pkl"
-                name_dir = f"{dir_path}/{name_}"
                 if list_dir and name_ in list_dir:
                     continue
                 train_steps(
+                    stat=stat,
                     learning_model=learning_model,
                     edge_index=edge_index,
                     name=name_dir,
@@ -122,9 +123,10 @@ def node_embedding_generation(
                 )
             else:
                 train_steps(
+                    stat=stat,
                     learning_model=learning_model,
                     edge_index=edge_index,
-                    name=name,
+                    name=name_dir,
                     model_choice=model_choice,
                 )
 
@@ -169,13 +171,14 @@ def train_steps(
     edge_index: pd.DataFrame,
     name: str,
     model_choice: str,
+    stat: str,
 ):
 
     """
     This function craete the loss funciton, train and validate the model
     """
 
-    data = learning_model.prepare_data(edge_index=edge_index, name=name)
+    data = learning_model.prepare_data(edge_index=edge_index, name=name, stat=stat)
     best_ValidLoss = np.Inf
     out_size = learning_model.model_loss_output(model_choice=model_choice)
     in_size = data.x.shape[1]

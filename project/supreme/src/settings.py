@@ -30,8 +30,8 @@ SELECTION_METHOD = [
 # "SelectByShuffling",
 #  "GeneticSelectionCV",
 #  "SequentialFeatureSelector",
-CLINICAL = float(os.environ.get("CLINICAL"))
-METHYLATION = float(os.environ.get("METHYLATION"))
+METHYLATION_P = float(os.environ.get("METHYLATION_P"))
+METHYLATION_S = float(os.environ.get("METHYLATION_S"))
 MICRO = float(os.environ.get("MICRO"))
 CNA = float(os.environ.get("CNA"))
 MODELS_B = ["RF"]
