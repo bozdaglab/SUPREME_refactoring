@@ -106,7 +106,7 @@ def get_stat_methos(stat_method: str):
 def set_same_users(sample_data: Dict, users: Dict, labels: Dict) -> Dict:
     new_dataset = defaultdict()
     shared_users = search_dictionary(users, len(users) - 1)
-    shared_users = sorted(shared_users)[0:100]
+    shared_users = sorted(shared_users)[0:50]
     shared_users_encoded = LabelEncoder().fit_transform(shared_users)
     for file_name, data in sample_data.items():
         new_dataset[file_name] = data[data.index.isin(shared_users)].set_index(

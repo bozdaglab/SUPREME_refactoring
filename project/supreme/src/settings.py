@@ -21,7 +21,7 @@ SELECTION_METHOD = [
     # "lasso",
     "RFE",
     "SelectFromModel",
-    "BorutaPy",
+    # "BorutaPy",
     "pearson",
     ["BorutaPy", "pearson", "RFE", "SelectFromModel"],
 ]
