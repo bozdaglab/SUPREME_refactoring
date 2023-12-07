@@ -343,31 +343,51 @@ class ClusteringModels:
             return None
 
     def KM(self):
-        params = {
-            "n_clusters": [5],
-            "init": ["k-means++", "random"],
-            "n_init": [10, 20, 30],
-        }
+        # params = {
+        #     "n_clusters": [7, 8, 9, 10, 11],
+        #     "init": ["k-means++"],
+        #     "n_init": [10, 20, 30],
+        # }
 
-        search = RandomizedSearchCV(
-            KMeans(),
-            param_distributions=params,
-            cv=4,
-            n_iter=X_TIME,
-            verbose=0,
-        )
+        # search = RandomizedSearchCV(
+        #     KMeans(),
+        #     param_distributions=params,
+        #     cv=4,
+        #     n_iter=X_TIME,
+        #     scoring=silhouette_score,
+        #     verbose=0,
+        # )
 
-        search.fit(self.x_train)
+        # search.fit(self.x_train)
 
-        best_n_clusters = search.best_params_["n_clusters"]
-        best_init = search.best_params_["init"]
-        best_n_init = search.best_params_["n_init"]
+        # best_n_clusters = search.best_params_["n_clusters"]
+        # best_init = search.best_params_["init"]
+        # best_n_init = search.best_params_["n_init"]
 
-        kmeans_model = KMeans(
-            n_clusters=best_n_clusters, init=best_init, n_init=best_n_init
-        )
+        # kmeans_model = KMeans(
+        #     n_clusters=best_n_clusters, init=best_init, n_init=best_n_init
+        # )
 
-        return kmeans_model.fit(self.x_train), search
+        # return kmeans_model.fit(self.x_train), search
+        best_k = 7
+        sil_score = 0.0
+        for n_clusters in [7, 8, 9]:
+            km = KMeans(
+                n_clusters=n_clusters, init="k-means++", n_init="auto", max_iter=100
+            )
+            score = silhouette_score(self.x_train, km.fit_predict(self.x_train))
+            if score > sil_score:
+                sil_score = score
+                best_k = n_clusters
+            print(
+                "For n_clusters =",
+                n_clusters,
+                "The average silhouette_score is :",
+                score,
+            )
+        print("-------------------------")
+        km = KMeans(n_clusters=best_k, init="k-means++", n_init="auto")
+        return km.fit(self.x_train), ""
 
     def AFP(self):
         # param = {

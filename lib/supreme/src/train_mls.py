@@ -70,8 +70,6 @@ def train_ml_model(
         model=INT_MOTHOD_CLASSIFICATION,
         x_train=X_train,
         y_train=y_train,
-        x_test=X_test,
-        y_test=y_test,
     )
     return get_ml_result(ml_model=ml_model, X_test=X_test, y_test=y_test)
 
