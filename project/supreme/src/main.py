@@ -9,6 +9,7 @@ from itertools import combinations, product
 from typing import List
 
 import pandas as pd
+import ray
 import torch
 from dotenv import find_dotenv, load_dotenv
 from helper import random_split, set_same_users, similarity_matrix_generation
@@ -125,75 +126,68 @@ def txt_to_pickle():
 sample_data, users, labels = txt_to_pickle()
 
 
-start = time.time()
 new_dataset, labels = set_same_users(
     sample_data=sample_data, users=users, labels=labels
 )
 
-# for stat in STAT_METHOD:
-#     final_correlation = similarity_matrix_generation(new_dataset=new_dataset, stat=stat)
-#     logger.info("SUPREME is running..")
-#     if isinstance(labels, pd.Series):
-#         for feature_type in SELECTION_METHOD:
-#             path_features = DATA.parent / "selected_features"
-#             path_embeggings = DATA.parent / "selected_features_embeddings"
-#             # files_features = os.listdir(path_embeggings)
-#             # if files_features:
-#             #     new_x = pd.read_pickle(path_embeggings/files_features[0])
 
-#             # else:
-#             new_x, selected_features = node_feature_generation(
-#                 new_dataset=new_dataset, labels=labels, feature_type=feature_type
-#             )
-#             if not os.path.exists(path_features):
-#                 os.makedirs(path_features)
-#             pd.DataFrame(selected_features).to_pickle(
-#                 path_features / f"selected_features_{feature_type}.pkl"
-#             )
-#             if not os.path.exists(path_embeggings):
-#                 os.makedirs(path_embeggings)
-#             pd.DataFrame(new_x).to_pickle(
-#                 path_embeggings / f"embeddings_{feature_type}.pkl"
-#             )
+@ray.remote(num_cpus=os.cpu_count())
+def compute_similarity(stat, new_dataset):
+    similarity_matrix_generation(new_dataset=new_dataset, stat=stat)
 
-#             train_valid_idx, test_idx = random_split(new_x)
-#             node_embedding_generation(
-#                 new_x=new_x,
-#                 labels=labels,
-#                 final_correlation=final_correlation,
-#                 stat=stat,
-#                 feature_type=feature_type,
-#             )
-#     else:
-#         new_x = node_feature_generation(new_dataset=new_dataset, labels=labels)
-#         train_valid_idx, test_idx = random_split(new_x)
-#         node_embedding_generation(
-#             new_x=new_x, labels=labels, final_correlation=final_correlation
-#         )
-# start2 = time.time()
+
+similarity_result_ray = [
+    compute_similarity.remote(stat, new_dataset) for stat in STAT_METHOD
+]
+ray.wait(similarity_result_ray)
+
+logger.info("SUPREME is running..")
+path_features = DATA.parent / "selected_features"
+path_embeggings = DATA.parent / "selected_features_embeddings"
+embeddings_result_ray = [
+    node_feature_generation.remote(
+        new_dataset=new_dataset,
+        labels=labels,
+        feature_type=feature_type,
+        path_features=path_features,
+        path_embeggings=path_embeggings,
+    )
+    for feature_type in SELECTION_METHOD
+]
+
+ray.wait(embeddings_result_ray)
+
+for stat in os.listdir(EDGES):
+    final_correlation = defaultdict()
+    for file in os.listdir(EDGES / stat):
+        final_correlation[file] = pd.read_pickle(EDGES / stat / file)
+    for idx, feature_type in enumerate(os.listdir(path_embeggings)):
+        new_x = pd.read_pickle(path_embeggings / feature_type)
+        if isinstance(new_x, pd.DataFrame):
+            new_x = torch.tensor(new_x.values, dtype=torch.float32)
+        train_valid_idx, test_idx = random_split(new_x)
+        node_embedding_generation(
+            new_x=new_x,
+            labels=labels,
+            final_correlation=final_correlation,
+            feature_type=feature_type,
+        )
+    # else:
+    #     new_x = node_feature_generation(new_dataset=new_dataset, labels=labels)
+    #     train_valid_idx, test_idx = random_split(new_x)
+    #     node_embedding_generation(
+    #         new_x=new_x, labels=labels, final_correlation=final_correlation
+    #     )
+
+start2 = time.time()
 
 # logger.info(
 #     f"It took {str(round(start2 - start, 1))} seconds for node embedding generation"
 # )
-
-path_embeggings = DATA.parent / "selected_features_embeddings"
-f = True
-DEVICE = torch.device("cpu")
-for i in os.listdir(path_embeggings):
-    feat = pd.read_pickle(path_embeggings / i)
-    if f:
-        new_x = torch.tensor(feat.values, device=DEVICE).float()
-        f = False
-    else:
-        new_x = torch.cat(
-            (new_x, torch.tensor(feat.values, device=DEVICE).float()), dim=1
-        )
-train_valid_idx, test_idx = random_split(new_x)
 logger.info("SUPREME is integrating the embeddings..")
 for ml_type, stat in product(LEARNING, STAT_METHOD):
     trial_combs = combine_trails(ml_type=f"{ml_type}/{stat}")
     for trial_name, trial in trial_combs.items():
-        logger.info(f"feature selection: {trial_name}")
         path_name = f"{EMBEDDINGS}\{ml_type}"
         path_to_files = f"{path_name}/{stat}/{trial_name}"
         result_path = f"{EMBEDDINGS}/result/{stat}/{trial_name}"
@@ -221,6 +215,6 @@ for ml_type, stat in product(LEARNING, STAT_METHOD):
                 file.write("\n\n")
                 logger.info("\n\n")
 
-end = time.time()
-logger.info(f"It took {round(end - start, 1)} seconds in total.")
-logger.info("SUPREME is done.")
+# end = time.time()
+# logger.info(f"It took {round(end - start, 1)} seconds in total.")
+# logger.info("SUPREME is done.")

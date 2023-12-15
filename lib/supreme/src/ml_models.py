@@ -284,7 +284,6 @@ class MLModels:
     def get_result(
         self, model, results: Dict, X_test: np.ndarray, y_test: np.ndarray
     ) -> None:
-
         model.fit(self.x_train, self.y_train)
         y_pred = model.predict(X_test)
 

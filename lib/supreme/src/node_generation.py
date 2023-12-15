@@ -5,6 +5,7 @@ from typing import Dict, Optional, Union
 
 import numpy as np
 import pandas as pd
+import ray
 import torch
 from feature_selections import select_features
 from helper import nan_checker, row_col_ratio
@@ -34,8 +35,13 @@ from torch import Tensor
 DEVICE = torch.device("cpu")
 
 
+@ray.remote(num_cpus=os.cpu_count())
 def node_feature_generation(
-    new_dataset: Dict, labels: Dict, feature_type: Optional[str] = None
+    new_dataset: Dict,
+    labels: Dict,
+    path_features: str,
+    path_embeggings: str,
+    feature_type: Optional[str] = None,
 ) -> Tensor:
     """
     Load features from each omic separately, apply feature selection if needed,
@@ -54,6 +60,7 @@ def node_feature_generation(
     selected_features = []
     for _, feat in new_dataset.items():
         if row_col_ratio(feat):
+            feat = feat[feat.columns[0:200]]
             if nan_checker(feat):
                 feat = pre_processing(feat)
             feat, final_features = select_features(
@@ -64,6 +71,7 @@ def node_feature_generation(
                 continue
             values = torch.tensor(feat.values, device=DEVICE)
         else:
+            selected_features.extend(feat.columns)
             values = feat.values
         if is_first:
             new_x = torch.tensor(values, device=DEVICE).float()
@@ -72,7 +80,14 @@ def node_feature_generation(
             new_x = torch.cat(
                 (new_x, torch.tensor(values, device=DEVICE).float()), dim=1
             )
-    return new_x, selected_features
+    if not os.path.exists(path_features):
+        os.makedirs(path_features)
+    pd.DataFrame(selected_features).to_pickle(
+        path_features / f"selected_features_{feature_type}.pkl"
+    )
+    if not os.path.exists(path_embeggings):
+        os.makedirs(path_embeggings)
+    pd.DataFrame(new_x).to_pickle(path_embeggings / f"embeddings_{feature_type}.pkl")
 
 
 def node_embedding_generation(
@@ -104,18 +119,17 @@ def node_embedding_generation(
         if isinstance(feature_type, list):
             feature_type = "_".join(feature_type)
         learning_model = load_model(new_x=new_x, labels=labels, model=model_choice)
-        dir_path = f"{EMBEDDINGS}/{model_choice}/{stat}/{feature_type}"
-        if not os.path.exists(dir_path):
-            os.makedirs(dir_path)
         for name, edge_index in final_correlation.items():
-            name_ = f"{name}.pkl"
-            name_dir = f"{dir_path}/{name_}"
             if model_choice == LearningTypes.clustering.name:
+                dir_path = f"{EMBEDDINGS}/{model_choice}/{stat}/{feature_type}"
+                if not os.path.exists(dir_path):
+                    os.makedirs(dir_path)
                 list_dir = os.listdir(dir_path)
+                name_ = f"{name}.pkl"
+                name_dir = f"{dir_path}/{name_}"
                 if list_dir and name_ in list_dir:
                     continue
                 train_steps(
-                    stat=stat,
                     learning_model=learning_model,
                     edge_index=edge_index,
                     name=name_dir,
@@ -123,10 +137,9 @@ def node_embedding_generation(
                 )
             else:
                 train_steps(
-                    stat=stat,
                     learning_model=learning_model,
                     edge_index=edge_index,
-                    name=name_dir,
+                    name=name,
                     model_choice=model_choice,
                 )
 
@@ -171,14 +184,12 @@ def train_steps(
     edge_index: pd.DataFrame,
     name: str,
     model_choice: str,
-    stat: str,
 ):
-
     """
     This function craete the loss funciton, train and validate the model
     """
 
-    data = learning_model.prepare_data(edge_index=edge_index, name=name, stat=stat)
+    data = learning_model.prepare_data(edge_index=edge_index)
     best_ValidLoss = np.Inf
     out_size = learning_model.model_loss_output(model_choice=model_choice)
     in_size = data.x.shape[1]
@@ -190,14 +201,11 @@ def train_steps(
             super_unsuper_model=model_choice,
         )
         av_valid_losses = []
-        for it in range(X_TIME2):
+        for _ in range(X_TIME2):
             optimizer = select_optimizer(OPTIM, model, learning_rate)
             min_valid_loss = np.Inf
             patience_count = 0
             for epoch in range(MAX_EPOCHS):
-                print(
-                    f"learning_rate: {learning_rate}, hid_size: {hid_size}, iteration: {it}, epoch: {epoch}"
-                )
                 model.train(optimizer, data)
                 this_valid_loss, emb = model.validate(data=data)
                 if this_valid_loss < min_valid_loss:
@@ -215,5 +223,4 @@ def train_steps(
         if av_valid_loss < best_ValidLoss:
             best_ValidLoss = av_valid_loss
             selected_emb = this_emb
-    name = name.replace("similarity_data", "embeddings_data")
     pd.DataFrame(selected_emb).to_pickle(f"{name}")

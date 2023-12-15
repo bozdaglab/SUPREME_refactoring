@@ -24,8 +24,6 @@ class GCNSupervised:
     def prepare_data(
         self,
         edge_index: pd.DataFrame,
-        name: str,
-        stat: str = None,
         col: Optional[str] = None,
         multi_labels: bool = False,
     ) -> Data:
@@ -47,7 +45,6 @@ class GCNSupervised:
         train_valid_idx, test_idx = random_split(new_x=self.new_x)
         if isinstance(edge_index, dict):
             edge_index = pd.DataFrame(edge_index).T
-        edge_index = chnage_connections_graph(name, stat, edge_index)
         data = make_data(new_x=self.new_x, edge_index=edge_index)
         if multi_labels:
             data.y = torch.tensor(self.labels[col].values, dtype=torch.float32)
@@ -75,7 +72,7 @@ class GCNUnsupervised:
     def __init__(self, new_x: Tensor) -> None:
         self.new_x = new_x
 
-    def prepare_data(self, edge_index: pd.DataFrame, name: str, stat: str) -> Data:
+    def prepare_data(self, edge_index: pd.DataFrame) -> Data:
         """
         Create a data object by adding features, edge_index, edge_attr.
         For unsupervised GCN, this function
@@ -92,8 +89,6 @@ class GCNUnsupervised:
         train_valid_idx, test_idx = random_split(new_x=self.new_x)
         if isinstance(edge_index, dict):
             edge_index = pd.DataFrame(edge_index).T
-        file_name = name.split("/")[-1]
-        edge_index = chnage_connections_graph(file_name, stat, edge_index)
         data = make_data(new_x=self.new_x, edge_index=edge_index)
         return train_test_valid(
             data=data, train_valid_idx=train_valid_idx, test_idx=test_idx
@@ -107,10 +102,7 @@ class GCNUnsupervised:
         return self.new_x.shape[-1]
 
 
-def chnage_connections_graph(
-    file_name: str, stat: str, edge_index: pd.DataFrame
-) -> pd.DataFrame:
-    thr = 0.60
+def chnage_connections_thr(file_name: str, stat: str) -> float:
     if "similarity_data_methylation" in file_name:
         if stat == "pearson":
             thr = METHYLATION_P
@@ -120,8 +112,7 @@ def chnage_connections_graph(
         thr = MICRO
     elif "similarity_data_cna" in file_name:
         thr = CNA
-    edge_index["link"] = [1 if i > thr else 0 for i in edge_index["Similarity Score"]]
-    return edge_index
+    return thr
 
 
 def make_data(new_x: Tensor, edge_index: pd.DataFrame) -> Data:

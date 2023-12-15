@@ -14,6 +14,7 @@ from learning_types import FeatureSelectionType
 from mlxtend.feature_selection import SequentialFeatureSelector
 from pre_processings import pre_processing
 from scipy.stats import pearsonr, spearmanr
+from selected_models import chnage_connections_thr
 from settings import EDGES
 from sklearn.feature_selection import RFE, SelectFromModel
 from sklearn.preprocessing import LabelEncoder
@@ -106,7 +107,7 @@ def get_stat_methos(stat_method: str):
 def set_same_users(sample_data: Dict, users: Dict, labels: Dict) -> Dict:
     new_dataset = defaultdict()
     shared_users = search_dictionary(users, len(users) - 1)
-    shared_users = sorted(shared_users)
+    shared_users = sorted(shared_users)[0:100]
     shared_users_encoded = LabelEncoder().fit_transform(shared_users)
     for file_name, data in sample_data.items():
         new_dataset[file_name] = data[data.index.isin(shared_users)].set_index(
@@ -138,6 +139,7 @@ def similarity_matrix_generation(
         if nan_checker(data):
             data = pre_processing(data=data)
         stat_model = get_stat_methos(stat)
+        thr = chnage_connections_thr(file_name, stat)
         for ind_i, patient_1 in data.iterrows():
             for ind_j, patient_2 in data[ind_i + 1 :].iterrows():
                 try:
@@ -146,12 +148,12 @@ def similarity_matrix_generation(
                     ).statistic
                 except AttributeError:
                     similarity_score = stat_model(patient_1.values, patient_2.values)[0]
-                if similarity_score > 0.0:
+                if similarity_score > thr:
                     correlation_dictionary[f"{ind_i}_{ind_j}"] = {
                         "Patient_1": ind_i,
                         "Patient_2": ind_j,
+                        "link": 1,
                         "Similarity Score": similarity_score,
-                        "link": 1 if similarity_score > thr else 0,
                     }
 
         # final_correlation[file_name] = correlation_dictionary
