@@ -6,7 +6,6 @@ import torch
 from helper import masking_indexes, random_split
 from learning_types import LearningTypes, OptimizerType
 from module import SUPREME, SupremeClassification, SupremeClusteringLink
-from settings import CNA, METHYLATION_P, METHYLATION_S, MICRO
 from sklearn.model_selection import RepeatedStratifiedKFold, train_test_split
 from torch import Tensor
 from torch.nn import Module
@@ -100,19 +99,6 @@ class GCNUnsupervised:
 
         """
         return self.new_x.shape[-1]
-
-
-def chnage_connections_thr(file_name: str, stat: str) -> float:
-    if "similarity_data_methylation" in file_name:
-        if stat == "pearson":
-            thr = METHYLATION_P
-        elif stat == "spearman":
-            thr = METHYLATION_S
-    elif "similarity_data_mrna" in file_name:
-        thr = MICRO
-    elif "similarity_data_cna" in file_name:
-        thr = CNA
-    return thr
 
 
 def make_data(new_x: Tensor, edge_index: pd.DataFrame) -> Data:

@@ -14,13 +14,25 @@ from learning_types import FeatureSelectionType
 from mlxtend.feature_selection import SequentialFeatureSelector
 from pre_processings import pre_processing
 from scipy.stats import pearsonr, spearmanr
-from selected_models import chnage_connections_thr
-from settings import EDGES
+from settings import CNA, EDGES, METHYLATION_P, METHYLATION_S, MICRO
 from sklearn.feature_selection import RFE, SelectFromModel
 from sklearn.preprocessing import LabelEncoder
 from torch import Tensor
 
 DEVICE = torch.device("cpu")
+
+
+def chnage_connections_thr(file_name: str, stat: str, thr: float = 0.60) -> float:
+    if "similarity_data_methylation" in file_name:
+        if stat == "pearson":
+            thr = METHYLATION_P
+        elif stat == "spearman":
+            thr = METHYLATION_S
+    elif "similarity_data_mrna" in file_name:
+        thr = MICRO
+    elif "similarity_data_cna" in file_name:
+        thr = CNA
+    return thr
 
 
 def search_dictionary(methods_features: Dict, thr: int = 2) -> List[str]:
@@ -107,7 +119,7 @@ def get_stat_methos(stat_method: str):
 def set_same_users(sample_data: Dict, users: Dict, labels: Dict) -> Dict:
     new_dataset = defaultdict()
     shared_users = search_dictionary(users, len(users) - 1)
-    shared_users = sorted(shared_users)[0:100]
+    shared_users = sorted(shared_users)[0:50]
     shared_users_encoded = LabelEncoder().fit_transform(shared_users)
     for file_name, data in sample_data.items():
         new_dataset[file_name] = data[data.index.isin(shared_users)].set_index(
@@ -120,10 +132,9 @@ def drop_rows(application_train: pd.DataFrame, gh: List[str]) -> pd.DataFrame:
     return application_train[gh].reset_index(drop=True)
 
 
-def similarity_matrix_generation(
-    new_dataset: Dict, stat: str, thr: float = 0.60
-) -> Dict:
+def similarity_matrix_generation(new_dataset: Dict, stat: str) -> Dict:
     # parqua dataset, parallel
+    stat_model = get_stat_methos(stat)
     final_correlation = defaultdict()
     path_dir = EDGES / stat
     if not os.path.exists(path_dir):
@@ -138,7 +149,6 @@ def similarity_matrix_generation(
         correlation_dictionary = defaultdict()
         if nan_checker(data):
             data = pre_processing(data=data)
-        stat_model = get_stat_methos(stat)
         thr = chnage_connections_thr(file_name, stat)
         for ind_i, patient_1 in data.iterrows():
             for ind_j, patient_2 in data[ind_i + 1 :].iterrows():
