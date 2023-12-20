@@ -1,13 +1,29 @@
 import logging
-from typing import Optional, Tuple
+from typing import Dict, Optional, Tuple
 
 import lightgbm as lgb
 import numpy as np
 import pandas as pd
 from settings import X_TIME
-from sklearn.cluster import KMeans
+from sklearn.cluster import (
+    DBSCAN,
+    AffinityPropagation,
+    AgglomerativeClustering,
+    KMeans,
+    MeanShift,
+    SpectralClustering,
+)
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LogisticRegression, SGDClassifier
+from sklearn.metrics import (
+    accuracy_score,
+    adjusted_rand_score,
+    completeness_score,
+    f1_score,
+    homogeneity_score,
+    silhouette_score,
+    v_measure_score,
+)
 from sklearn.model_selection import RandomizedSearchCV
 from sklearn.neural_network import MLPClassifier
 from sklearn.svm import SVC
@@ -17,9 +33,7 @@ logger = logging.getLogger(__name__)
 
 
 class MLModels:
-    def __init__(
-        self, model: str, x_train: pd.DataFrame, y_train: Optional[pd.DataFrame] = None
-    ):
+    def __init__(self, model: str, x_train: pd.DataFrame, y_train: pd.DataFrame):
         self.model = model
         self.x_train = x_train
         self.y_train = y_train
@@ -33,7 +47,6 @@ class MLModels:
             "SVM": self.SVM,
             "LR": self.LR,
             "SGD": self.SGD,
-            "KM": self.KM,
         }
         try:
             return models.get(self.model)()
@@ -268,29 +281,180 @@ class MLModels:
             search,
         )
 
-    def KM(self):
-        params = {
-            "n_clusters": [5],
-            "init": ["k-means++", "random"],
-            "n_init": [10, 20, 30],
+    def get_result(
+        self, model, results: Dict, X_test: np.ndarray, y_test: np.ndarray
+    ) -> None:
+        model.fit(self.x_train, self.y_train)
+        y_pred = model.predict(X_test)
+
+        train_pred = model.predict(self.x_train)
+
+        results["test_accuracy"].append(round(accuracy_score(y_test, y_pred), 3))
+        results["test_weighted_f1"].append(
+            round(f1_score(y_test, y_pred, average="weighted"), 3)
+        )
+        results["test_macro_f1"].append(
+            round(f1_score(y_test, y_pred, average="macro"), 3)
+        )
+        results["train_accuracy"].append(
+            round(accuracy_score(self.y_train, train_pred), 3)
+        )
+        results["train_weighted_f1"].append(
+            round(f1_score(self.y_train, train_pred, average="weighted"), 3)
+        )
+        results["train_macro_f1"].append(
+            round(f1_score(self.y_train, train_pred, average="macro"), 3)
+        )
+
+
+class ClusteringModels:
+    def __init__(
+        self, model: str, x_train: pd.DataFrame, y_train: Optional[pd.DataFrame] = None
+    ):
+        self.model = model
+        self.x_train = x_train
+        self.y_train = y_train
+
+    def train_ml_model_factory(self):
+        models = {
+            "KM": self.KM,
+            "APF": self.AFP,
+            "DBSCAN": self.DBSCAN,
+            "AGC": self.AGC,
+            "MS": self.MS,
+            "SPC": self.SPC,
         }
+        try:
+            return models.get(self.model)()
+        except ValueError:
+            raise Exception
 
-        search = RandomizedSearchCV(
-            KMeans(),
-            param_distributions=params,
-            cv=4,
-            n_iter=X_TIME,
-            verbose=0,
+    def train_classifier(self) -> Tuple:
+        """
+        Train a classifier
+
+        """
+        try:
+            classfier = self.train_ml_model_factory()
+            return classfier.fit(self.x_train, self.y_train)  # .best_estimator_
+
+        except (TypeError, ValueError):
+            return None
+
+    def KM(self):
+        # params = {
+        #     "n_clusters": [7, 8, 9, 10, 11],
+        #     "init": ["k-means++"],
+        #     "n_init": [10, 20, 30],
+        # }
+
+        # search = RandomizedSearchCV(
+        #     KMeans(),
+        #     param_distributions=params,
+        #     cv=4,
+        #     n_iter=X_TIME,
+        #     scoring=silhouette_score,
+        #     verbose=0,
+        # )
+
+        # search.fit(self.x_train)
+
+        # best_n_clusters = search.best_params_["n_clusters"]
+        # best_init = search.best_params_["init"]
+        # best_n_init = search.best_params_["n_init"]
+
+        # kmeans_model = KMeans(
+        #     n_clusters=best_n_clusters, init=best_init, n_init=best_n_init
+        # )
+
+        # return kmeans_model.fit(self.x_train), search
+        best_k = 7
+        sil_score = 0.0
+        for n_clusters in [7, 8, 9]:
+            km = KMeans(
+                n_clusters=n_clusters, init="k-means++", n_init="auto", max_iter=100
+            )
+            score = silhouette_score(self.x_train, km.fit_predict(self.x_train))
+            if score > sil_score:
+                sil_score = score
+                best_k = n_clusters
+            print(
+                "For n_clusters =",
+                n_clusters,
+                "The average silhouette_score is :",
+                score,
+            )
+        print("-------------------------")
+        km = KMeans(n_clusters=best_k, init="k-means++", n_init="auto")
+        return km.fit(self.x_train), ""
+
+    def AFP(self):
+        # param = {
+        #     "damping" : np.arange(0.1, 0.8, 0.1),
+        #     "affinity": ["precomputed", "euclidean"]
+        # }
+
+        # def custome_score(estimator, x_train):
+        #     return silhouette_score(estimator.fit_predict(x_train), x_train)
+
+        # search = GridSearchCV (
+        #     AffinityPropagation(),
+        #     param_distributions=param,
+        #     scoring=custome_score,
+        #     cv=4,
+        #     n_iter=X_TIME,
+        #     verbose=0)
+        # search.fit(self.x_train)
+        # affinity_model = AffinityPropagation(
+        #     damping=search.best_params_["damping"],
+        #     affinity=search.best_params_["affinity"]
+        # )
+        return AffinityPropagation().fit(self.x_train), "Add_best_later"
+
+    def get_result(
+        self,
+        model,
+        results: Dict,
+        X_test: Optional[np.ndarray] = None,
+        y_test: Optional[np.ndarray] = None,
+    ) -> None:
+        try:
+            predictions = model.predict(self.x_train)
+        except AttributeError:
+            predictions = model.labels_
+        results["homogeneity"].append(homogeneity_score(self.y_train, predictions))
+        results["Completeness"].append(completeness_score(self.y_train, predictions))
+        results["v_measure"].append(v_measure_score(self.y_train, predictions))
+        results["adjusted_rand"].append(adjusted_rand_score(self.y_train, predictions))
+        results["silhouette"].append(silhouette_score(self.x_train, predictions))
+
+    def DBSCAN(self):
+        dbscan_model = DBSCAN(eps=0.5, min_samples=5)
+        # param = {
+        #     "eps": np.arange(0.1, 0.7, 0.1),
+        #     "min_samples": [1, 5, 10, 15],
+        # }
+        # search = RandomizedSearchCV(
+        #     dbscan_model,
+        #     param_distributions=param,
+        #     n_iter=X_TIME,
+        #     verbose=0
+        # )
+        # search.fit(self.x_train)
+        return dbscan_model.fit(self.x_train), "Add_best_later"
+
+    def AGC(self):
+        agc = AgglomerativeClustering(
+            n_clusters=5, affinity="euclidean", linkage="ward"
         )
+        return agc.fit(self.x_train), "Add_best_later"
 
-        search.fit(self.x_train)
+    def MS(self):
+        """Add RandomizedSearchCV later"""
+        return MeanShift().fit(self.x_train), "Add_best_later"
 
-        best_n_clusters = search.best_params_["n_clusters"]
-        best_init = search.best_params_["init"]
-        best_n_init = search.best_params_["n_init"]
+    def SPC(self):
+        return SpectralClustering(n_clusters=5).fit(self.x_train), "Add_best_later"
 
-        kmeans_model = KMeans(
-            n_clusters=best_n_clusters, init=best_init, n_init=best_n_init
-        )
 
-        return kmeans_model, search
+# ["SPC","AGC", "KM", "APF"]

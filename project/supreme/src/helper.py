@@ -1,5 +1,6 @@
 import os
 from collections import Counter, defaultdict
+from pathlib import Path
 from typing import Dict, List, Tuple
 
 import numpy as np
@@ -14,12 +15,25 @@ from learning_types import FeatureSelectionType
 from mlxtend.feature_selection import SequentialFeatureSelector
 from pre_processings import pre_processing
 from scipy.stats import pearsonr, spearmanr
-from settings import EDGES, STAT_METHOD
+from settings import CNA, METHYLATION_P, METHYLATION_S, MICRO
 from sklearn.feature_selection import RFE, SelectFromModel
 from sklearn.preprocessing import LabelEncoder
 from torch import Tensor
 
 DEVICE = torch.device("cpu")
+
+
+def chnage_connections_thr(file_name: str, stat: str, thr: float = 0.60) -> float:
+    if "similarity_data_methylation" in file_name:
+        if stat == "pearson":
+            thr = METHYLATION_P
+        elif stat == "spearman":
+            thr = METHYLATION_S
+    elif "similarity_data_mrna" in file_name:
+        thr = MICRO
+    elif "similarity_data_cna" in file_name:
+        thr = CNA
+    return thr
 
 
 def search_dictionary(methods_features: Dict, thr: int = 2) -> List[str]:
@@ -106,7 +120,7 @@ def get_stat_methos(stat_method: str):
 def set_same_users(sample_data: Dict, users: Dict, labels: Dict) -> Dict:
     new_dataset = defaultdict()
     shared_users = search_dictionary(users, len(users) - 1)
-    shared_users = sorted(shared_users)[0:100]
+    shared_users = sorted(shared_users)[0:50]
     shared_users_encoded = LabelEncoder().fit_transform(shared_users)
     for file_name, data in sample_data.items():
         new_dataset[file_name] = data[data.index.isin(shared_users)].set_index(
@@ -119,41 +133,40 @@ def drop_rows(application_train: pd.DataFrame, gh: List[str]) -> pd.DataFrame:
     return application_train[gh].reset_index(drop=True)
 
 
-def similarity_matrix_generation(new_dataset: Dict, thr: float = 0.60) -> Dict:
+def similarity_matrix_generation(new_dataset: Dict, stat: str, path_dir: Path):
     # parqua dataset, parallel
-    final_correlation = defaultdict()
-    if not os.path.exists(EDGES):
-        os.mkdir(EDGES)
-    file_names = os.listdir(EDGES)
-    if file_names:
-        for file in file_names:
-            final_correlation[file.split(".")[0]] = pd.read_pickle(f"{EDGES}/{file}")
-        return final_correlation
+    stat_model = get_stat_methos(stat)
+    if not os.path.exists(path_dir):
+        os.makedirs(path_dir)
 
     for file_name, data in new_dataset.items():
         correlation_dictionary = defaultdict()
         if nan_checker(data):
             data = pre_processing(data=data)
-        stat_model = get_stat_methos(STAT_METHOD)
+        thr = chnage_connections_thr(file_name, stat)
         for ind_i, patient_1 in data.iterrows():
             for ind_j, patient_2 in data[ind_i + 1 :].iterrows():
-                similarity_score = stat_model(
-                    patient_1.values, patient_2.values
-                ).statistic
-                if similarity_score > 0.0:
+                try:
+                    similarity_score = stat_model(
+                        patient_1.values, patient_2.values
+                    ).statistic
+                except AttributeError:
+                    similarity_score = stat_model(patient_1.values, patient_2.values)[0]
+                if similarity_score > thr:
                     correlation_dictionary[f"{ind_i}_{ind_j}"] = {
                         "Patient_1": ind_i,
                         "Patient_2": ind_j,
+                        "link": 1,
                         "Similarity Score": similarity_score,
-                        "link": 1 if similarity_score > thr else 0,
                     }
-        final_correlation[file_name] = correlation_dictionary
+
+        # final_correlation[file_name] = correlation_dictionary
 
         pd.DataFrame(
             correlation_dictionary.values(),
             columns=list(correlation_dictionary.items())[0][1].keys(),
-        ).to_pickle(EDGES / f"similarity_{file_name}.pkl")
-    return final_correlation
+        ).to_pickle(path_dir / f"similarity_{file_name}.pkl")
+    return None
 
 
 def load_models1(
@@ -246,5 +259,5 @@ def load_models2(
             n_estimators="auto",
             verbose=2,
             random_state=42,
-            max_iter=5,
+            max_iter=10,
         )

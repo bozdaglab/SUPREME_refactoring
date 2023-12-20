@@ -5,6 +5,7 @@ from typing import Dict, Optional, Union
 
 import numpy as np
 import pandas as pd
+import ray
 import torch
 from feature_selections import select_features
 from helper import nan_checker, row_col_ratio
@@ -27,8 +28,6 @@ from settings import (
     OPTIM,
     OPTIONAL_FEATURE_SELECTION,
     PATIENCE,
-    POS_NEG_MODELS,
-    UNSUPERVISED_MODELS,
     X_TIME2,
 )
 from torch import Tensor
@@ -36,8 +35,13 @@ from torch import Tensor
 DEVICE = torch.device("cpu")
 
 
+@ray.remote(num_cpus=os.cpu_count())
 def node_feature_generation(
-    new_dataset: Dict, labels: Dict, feature_type: Optional[str] = None
+    new_dataset: Dict,
+    labels: Dict,
+    path_features: str,
+    path_embeggings: str,
+    feature_type: Optional[str] = None,
 ) -> Tensor:
     """
     Load features from each omic separately, apply feature selection if needed,
@@ -53,16 +57,21 @@ def node_feature_generation(
         Concatenated features from different omics file
     """
     is_first = True
+    selected_features = []
     for _, feat in new_dataset.items():
         if row_col_ratio(feat):
-            feat = feat[feat.columns[0:300]]
+            feat = feat[feat.columns[0:200]]
             if nan_checker(feat):
                 feat = pre_processing(feat)
-            feat = select_features(
+            feat, final_features = select_features(
                 application_train=feat, labels=labels, feature_type=feature_type
             )
+            selected_features.extend(final_features)
+            if not any(feat):
+                continue
             values = torch.tensor(feat.values, device=DEVICE)
         else:
+            selected_features.extend(feat.columns)
             values = feat.values
         if is_first:
             new_x = torch.tensor(values, device=DEVICE).float()
@@ -71,13 +80,21 @@ def node_feature_generation(
             new_x = torch.cat(
                 (new_x, torch.tensor(values, device=DEVICE).float()), dim=1
             )
-    return new_x
+    if not os.path.exists(path_features):
+        os.makedirs(path_features)
+    pd.DataFrame(selected_features).to_pickle(
+        path_features / f"selected_features_{feature_type}.pkl"
+    )
+    if not os.path.exists(path_embeggings):
+        os.makedirs(path_embeggings)
+    pd.DataFrame(new_x).to_pickle(path_embeggings / f"embeddings_{feature_type}.pkl")
 
 
 def node_embedding_generation(
     new_x: Tensor,
     labels: Optional[pd.DataFrame],
     final_correlation: Dict,
+    stat: str,
     feature_type: Optional[str] = None,
 ) -> None:
     """
@@ -95,43 +112,29 @@ def node_embedding_generation(
         Generate embeddings for each omic
     """
 
-    if not os.path.exists(EMBEDDINGS):
-        os.mkdir(EMBEDDINGS)
     for model_choice in LEARNING:
-        emb_path = EMBEDDINGS / model_choice
-        if not os.path.exists(emb_path):
-            os.mkdir(emb_path)
-        # embeddings_file = os.listdir(emb_path)
-        # if embeddings_file:
-        #     for name in embeddings_file:
-        #         path_dir = f"{emb_path}/{name}"
-        #         for plk_file in os.listdir(path_dir):
-        #             embeddings[name].append(pd.read_pickle(f"{path_dir}/{plk_file}"))
-        #     return embeddings
+        # emb_path = EMBEDDINGS / model_choice / stat
+        # if not os.path.exists(emb_path):
+        #     os.makedirs(emb_path)
         if isinstance(feature_type, list):
             feature_type = "_".join(feature_type)
         learning_model = load_model(new_x=new_x, labels=labels, model=model_choice)
         for name, edge_index in final_correlation.items():
             if model_choice == LearningTypes.clustering.name:
-                for data_gen_types, unsupervised_model in product(
-                    POS_NEG_MODELS, UNSUPERVISED_MODELS
-                ):
-                    dir_path = f"{EMBEDDINGS}/{model_choice}/{data_gen_types}_{unsupervised_model}/{feature_type}"
-                    if not os.path.exists(dir_path):
-                        os.makedirs(dir_path)
-                    list_dir = os.listdir(dir_path)
-                    name_ = f"{name}.pkl"
-                    name_dir = f"{dir_path}/{name_}"
-                    if list_dir and name_ in list_dir:
-                        continue
-                    train_steps(
-                        data_generation_types=data_gen_types,
-                        learning_model=learning_model,
-                        edge_index=edge_index,
-                        name=name_dir,
-                        model_choice=model_choice,
-                        super_unsuper_model=unsupervised_model,
-                    )
+                dir_path = f"{EMBEDDINGS}/{model_choice}/{stat}/{feature_type}"
+                if not os.path.exists(dir_path):
+                    os.makedirs(dir_path)
+                list_dir = os.listdir(dir_path)
+                name_ = f"{name}.pkl"
+                name_dir = f"{dir_path}/{name_}"
+                if list_dir and name_ in list_dir:
+                    continue
+                train_steps(
+                    learning_model=learning_model,
+                    edge_index=edge_index,
+                    name=name_dir,
+                    model_choice=model_choice,
+                )
             else:
                 train_steps(
                     learning_model=learning_model,
@@ -181,27 +184,21 @@ def train_steps(
     edge_index: pd.DataFrame,
     name: str,
     model_choice: str,
-    data_generation_types: Optional[str] = None,
-    super_unsuper_model: Optional[str] = None,
 ):
-
     """
     This function craete the loss funciton, train and validate the model
     """
-    if not super_unsuper_model:
-        super_unsuper_model = model_choice
-    data = learning_model.prepare_data(
-        data_generation_types=data_generation_types, edge_index=edge_index
-    )
+
+    data = learning_model.prepare_data(edge_index=edge_index)
     best_ValidLoss = np.Inf
     out_size = learning_model.model_loss_output(model_choice=model_choice)
     in_size = data.x.shape[1]
     for learning_rate, hid_size in product(LEARNING_RATE, HIDDEN_SIZE):
         model = select_model(
-            super_unsuper_model=super_unsuper_model,
             in_size=in_size,
             hid_size=hid_size,
             out_size=out_size,
+            super_unsuper_model=model_choice,
         )
         av_valid_losses = []
         for _ in range(X_TIME2):
