@@ -13,6 +13,15 @@ import ray
 import torch
 from dotenv import find_dotenv, load_dotenv
 from helper import random_split, set_same_users, similarity_matrix_generation
+
+load_dotenv(find_dotenv())
+LIB = os.environ.get("LIB")
+PROJECT = os.environ.get("PROJECT")
+
+sys.path.append(LIB)
+sys.path.append(PROJECT)
+
+
 from node_generation import node_embedding_generation, node_feature_generation
 from set_logging import set_log_config
 from settings import (
@@ -28,12 +37,6 @@ from settings import (
 from sklearn.preprocessing import LabelEncoder
 from train_mls import train_ml_model
 
-load_dotenv(find_dotenv())
-LIB = os.environ.get("LIB")
-PROJECT = os.environ.get("PROJECT")
-
-sys.path.append(LIB)
-sys.path.append(PROJECT)
 set_log_config()
 logger = logging.getLogger()
 warnings.filterwarnings("ignore", category=FutureWarning)
