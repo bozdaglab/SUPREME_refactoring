@@ -167,7 +167,7 @@ def select_features(
     all_methods = FeatureALgo()
     if isinstance(feature_type, list):
         for method in feature_type:
-            select_features = apply_features_selections(
+            select_features_ = apply_features_selections(
                 method=method,
                 all_methods=all_methods,
                 application_train=application_train,
@@ -175,8 +175,8 @@ def select_features(
                 ml_model_train=ml_model_train,
             )
             try:
-                if any(select_features):
-                    for feature in select_features:
+                if any(select_features_):
+                    for feature in select_features_:
                         methods_features[f"{method}"][feature] += 1
             except TypeError:
                 pass
