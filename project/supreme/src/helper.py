@@ -1,5 +1,6 @@
 import os
 from collections import Counter, defaultdict
+from pathlib import Path
 from typing import Dict, List, Tuple
 
 import numpy as np
@@ -14,7 +15,7 @@ from learning_types import FeatureSelectionType
 from mlxtend.feature_selection import SequentialFeatureSelector
 from pre_processings import pre_processing
 from scipy.stats import pearsonr, spearmanr
-from settings import CNA, EDGES, METHYLATION_P, METHYLATION_S, MICRO
+from settings import CNA, METHYLATION_P, METHYLATION_S, MICRO
 from sklearn.feature_selection import RFE, SelectFromModel
 from sklearn.preprocessing import LabelEncoder
 from torch import Tensor
@@ -132,18 +133,11 @@ def drop_rows(application_train: pd.DataFrame, gh: List[str]) -> pd.DataFrame:
     return application_train[gh].reset_index(drop=True)
 
 
-def similarity_matrix_generation(new_dataset: Dict, stat: str) -> Dict:
+def similarity_matrix_generation(new_dataset: Dict, stat: str, path_dir: Path):
     # parqua dataset, parallel
     stat_model = get_stat_methos(stat)
-    final_correlation = defaultdict()
-    path_dir = EDGES / stat
     if not os.path.exists(path_dir):
         os.makedirs(path_dir)
-    file_names = os.listdir(path_dir)
-    if file_names:
-        for file in file_names:
-            final_correlation[file.split(".")[0]] = pd.read_pickle(f"{path_dir}/{file}")
-        return final_correlation
 
     for file_name, data in new_dataset.items():
         correlation_dictionary = defaultdict()

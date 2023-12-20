@@ -13,15 +13,6 @@ import ray
 import torch
 from dotenv import find_dotenv, load_dotenv
 from helper import random_split, set_same_users, similarity_matrix_generation
-
-load_dotenv(find_dotenv())
-LIB = os.environ.get("LIB")
-PROJECT = os.environ.get("PROJECT")
-
-sys.path.append(LIB)
-sys.path.append(PROJECT)
-
-
 from node_generation import node_embedding_generation, node_feature_generation
 from set_logging import set_log_config
 from settings import (
@@ -37,6 +28,12 @@ from settings import (
 from sklearn.preprocessing import LabelEncoder
 from train_mls import train_ml_model
 
+load_dotenv(find_dotenv())
+LIB = os.environ.get("LIB")
+PROJECT = os.environ.get("PROJECT")
+
+sys.path.append(LIB)
+sys.path.append(PROJECT)
 set_log_config()
 logger = logging.getLogger()
 warnings.filterwarnings("ignore", category=FutureWarning)
@@ -139,26 +136,33 @@ def compute_similarity(stat, new_dataset):
     similarity_matrix_generation(new_dataset=new_dataset, stat=stat)
 
 
-similarity_result_ray = [
-    compute_similarity.remote(stat, new_dataset) for stat in STAT_METHOD
-]
-ray.wait(similarity_result_ray)
+if os.path.exists(EDGES):
+    pass
+else:
+    similarity_result_ray = [
+        compute_similarity.remote(stat, new_dataset) for stat in STAT_METHOD
+    ]
+    ray.wait(similarity_result_ray)
 
 logger.info("SUPREME is running..")
 path_features = DATA.parent / "selected_features"
 path_embeggings = DATA.parent / "selected_features_embeddings"
-embeddings_result_ray = [
-    node_feature_generation.remote(
-        new_dataset=new_dataset,
-        labels=labels,
-        feature_type=feature_type,
-        path_features=path_features,
-        path_embeggings=path_embeggings,
-    )
-    for feature_type in SELECTION_METHOD
-]
 
-ray.wait(embeddings_result_ray)
+if os.path.exists(path_embeggings):
+    pass
+else:
+    embeddings_result_ray = [
+        node_feature_generation.remote(
+            new_dataset=new_dataset,
+            labels=labels,
+            feature_type=feature_type,
+            path_features=path_features,
+            path_embeggings=path_embeggings,
+        )
+        for feature_type in SELECTION_METHOD
+    ]
+
+    ray.wait(embeddings_result_ray)
 
 for stat in os.listdir(EDGES):
     final_correlation = defaultdict()
@@ -170,6 +174,7 @@ for stat in os.listdir(EDGES):
             new_x = torch.tensor(new_x.values, dtype=torch.float32)
         train_valid_idx, test_idx = random_split(new_x)
         node_embedding_generation(
+            stat=stat,
             new_x=new_x,
             labels=labels,
             final_correlation=final_correlation,
