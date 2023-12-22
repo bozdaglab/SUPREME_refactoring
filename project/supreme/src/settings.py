@@ -13,25 +13,30 @@ LEARNING = json.loads(os.environ.get("LEARNING"))
 OPTIONAL_FEATURE_SELECTION = bool(
     strtobool(os.environ.get("OPTIONAL_FEATURE_SELECTION"))
 )
-INT_MOTHOD_CLUSTERING = os.environ.get("INT_MOTHOD_CLUSTERING")
+INT_MOTHOD_CLUSTERING = json.loads(os.environ.get("INT_MOTHOD_CLUSTERING"))
 INT_MOTHOD_CLASSIFICATION = os.environ.get("INT_MOTHOD_CLASSIFICATION")
-NUMBER_FEATURES = [20]
-X_ITER = 20
+NUMBER_FEATURES = [50]
+X_ITER = 30
 SELECTION_METHOD = [
-    # "pearson",
-    # "lasso",
-    # "RFE",
-    # "SelectFromModel",
-    # "SequentialFeatureSelector",
-    # "SelectBySingleFeaturePerformance",
-    # "SelectByShuffling",
-    # "GeneticSelectionCV",
+    "lasso",
+    "RFE",
+    "SelectFromModel",
     "BorutaPy",
-    ["BorutaPy", "pearson"],
+    "pearson",
+    ["BorutaPy", "pearson", "RFE", "SelectFromModel", "lasso"],
 ]
+# ]
+#    "SelectBySingleFeaturePerformance",
+# "SelectByShuffling",
+#  "GeneticSelectionCV",
+#  "SequentialFeatureSelector",
+METHYLATION_P = float(os.environ.get("METHYLATION_P"))
+METHYLATION_S = float(os.environ.get("METHYLATION_S"))
+MICRO = float(os.environ.get("MICRO"))
+CNA = float(os.environ.get("CNA"))
 MODELS_B = ["RF"]
-UNSUPERVISED_MODELS = json.loads(os.environ.get("UNSUPERVISED_MODELS"))
-POS_NEG_MODELS = json.loads(os.environ.get("POS_NEG_MODELS"))
+# UNSUPERVISED_MODELS = json.loads(os.environ.get("UNSUPERVISED_MODELS"))
+# POS_NEG_MODELS = json.loads(os.environ.get("POS_NEG_MODELS"))
 LOGGING_LEVEL = os.environ.get("LOGGING_LEVEL")
 IMPUTER_NAME_SUBSET = os.environ.get("IMPUTER_NAME_SUBSET")
 IMPUTER_NAME_WHOLE = os.environ.get("IMPUTER_NAME_WHOLE")
@@ -39,7 +44,7 @@ CLASS_NAME = os.environ.get("CLASS_NAME")
 GROUPBY_COLUMNS = json.loads(os.environ.get("GROUPBY_COLUMNS"))
 FEATURE_TO_DROP = json.loads(os.environ.get("FEATURE_TO_DROP"))
 OPTIM = os.environ.get("OPTIM")
-STAT_METHOD = os.environ.get("STAT_METHOD")
+STAT_METHOD = json.loads(os.environ.get("STAT_METHOD"))
 LEARNING_RATE = json.loads(os.environ.get("LEARNING_RATE"))
 HIDDEN_SIZE = json.loads(os.environ.get("HIDDEN_SIZE"))
 X_TIME = int(os.environ.get("X_TIME"))

@@ -63,6 +63,8 @@ class GCNSupervised:
             A data object ready to pass to GCN
         """
         train_valid_idx, test_idx = random_split(new_x=self.new_x)
+        if isinstance(edge_index, dict):
+            edge_index = pd.DataFrame(edge_index).T
         data = make_data(new_x=self.new_x, edge_index=edge_index)
         if multi_labels:
             data.y = torch.tensor(self.labels[col].values, dtype=torch.float32)
@@ -230,7 +232,7 @@ def train_test_valid(
         data.test_mask = torch.tensor(
             masking_indexes(data=data, indexes=test_idx), device=DEVICE
         )
-    except KeyError:
+    except (KeyError, TypeError):
         data.test_mask = torch.tensor(
             masking_indexes(data=data, indexes=test_idx.indices), device=DEVICE
         )
@@ -294,7 +296,9 @@ def select_optimizer(
             model.parameters(), lr=learning_rate, weight_decay=0.001, momentum=0.9
         )
     elif optimizer_type == OptimizerType.adam.name:
-        return torch.optim.Adam(model.model.parameters(), lr=learning_rate)
+        return torch.optim.Adam(
+            model.model.parameters(), lr=learning_rate, weight_decay=0.001
+        )
     elif optimizer_type == OptimizerType.sparse_adam.name:
         return torch.optim.SparseAdam(list(model.parameters()), lr=learning_rate)
     else:
@@ -303,7 +307,13 @@ def select_optimizer(
 
 def select_model(
     super_unsuper_model: str, in_size: int, hid_size: int, out_size: int
-) -> Union[SupremeClassification, EncoderDecoder, EncoderInnerProduct]:
+) -> Union[
+    SupremeClassification,
+    SupremeClusteringLink,
+    EncoderDecoder,
+    EncoderInnerProduct,
+    EncoderEntireInput,
+]:
     """
     This function selects the return of the model
 

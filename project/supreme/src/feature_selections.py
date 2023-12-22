@@ -166,17 +166,19 @@ def select_features(
     all_methods = FeatureALgo()
     if isinstance(feature_type, list):
         for method in feature_type:
-            select_features = apply_features_selections(
+            select_features_ = apply_features_selections(
                 method=method,
                 all_methods=all_methods,
                 application_train=application_train,
                 labels=labels,
                 ml_model_train=ml_model_train,
             )
-            if any(select_features):
-                for feature in select_features:
-                    methods_features[f"{method}"][feature] += 1
-
+            try:
+                if any(select_features_):
+                    for feature in select_features_:
+                        methods_features[f"{method}"][feature] += 1
+            except TypeError:
+                pass
         final_features = search_dictionary(
             methods_features, thr=features_ratio(len(methods_features))
         )
@@ -188,10 +190,10 @@ def select_features(
             labels=labels,
             ml_model_train=ml_model_train,
         )
-
-    application_train = drop_rows(application_train, final_features)
+    if final_features:
+        return drop_rows(application_train, final_features), final_features
     # application_train = all_methods.mutual_information(application_train, y)
-    return application_train
+    return [], []
 
 
 def apply_features_selections(

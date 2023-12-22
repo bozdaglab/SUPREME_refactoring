@@ -5,9 +5,9 @@ from typing import Dict, Optional, Union
 
 import numpy as np
 import pandas as pd
+import ray
 import torch
-
-# from feature_selections import select_features
+from feature_selections import select_features
 from helper import nan_checker, row_col_ratio
 from learning_types import LearningTypes
 from pre_processings import pre_processing
@@ -37,8 +37,13 @@ from torch import Tensor
 DEVICE = torch.device("cpu")
 
 
+@ray.remote(num_cpus=os.cpu_count())
 def node_feature_generation(
-    new_dataset: Dict, labels: Dict, feature_type: Optional[str] = None
+    new_dataset: Dict,
+    labels: Dict,
+    path_features: str,
+    path_embeggings: str,
+    feature_type: Optional[str] = None,
 ) -> Tensor:
     """
     Load features from each omic separately, apply feature selection if needed,
@@ -54,18 +59,21 @@ def node_feature_generation(
         Concatenated features from different omics file
     """
     is_first = True
+    selected_features = []
     for _, feat in new_dataset.items():
         if row_col_ratio(feat):
-            feat = feat[feat.columns[0:300]]
+            feat = feat[feat.columns[0:200]]
             if nan_checker(feat):
                 feat = pre_processing(feat)
-            # feat = select_features(
-            #     application_train=feat, labels=labels, feature_type=feature_type
-            # )
-            if feat.empty:
+            feat, final_features = select_features(
+                application_train=feat, labels=labels, feature_type=feature_type
+            )
+            selected_features.extend(final_features)
+            if not any(feat):
                 continue
             values = torch.tensor(feat.values, device=DEVICE)
         else:
+            selected_features.extend(feat.columns)
             values = feat.values
         if is_first:
             new_x = torch.tensor(values, device=DEVICE).float()
@@ -74,7 +82,14 @@ def node_feature_generation(
             new_x = torch.cat(
                 (new_x, torch.tensor(values, device=DEVICE).float()), dim=1
             )
-    return new_x
+    if not os.path.exists(path_features):
+        os.makedirs(path_features)
+    pd.DataFrame(selected_features).to_pickle(
+        path_features / f"selected_features_{feature_type}.pkl"
+    )
+    if not os.path.exists(path_embeggings):
+        os.makedirs(path_embeggings)
+    pd.DataFrame(new_x).to_pickle(path_embeggings / f"embeddings_{feature_type}.pkl")
 
 
 def node_embedding_generation(
@@ -201,10 +216,10 @@ def train_steps(
     in_size = data.x.shape[1]
     for learning_rate, hid_size in product(LEARNING_RATE, HIDDEN_SIZE):
         model = select_model(
-            super_unsuper_model=super_unsuper_model,
             in_size=in_size,
             hid_size=hid_size,
             out_size=out_size,
+            super_unsuper_model=model_choice,
         )
         av_valid_losses = []
         optimizer = select_optimizer(
