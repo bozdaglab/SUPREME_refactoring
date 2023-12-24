@@ -1,3 +1,5 @@
+# from typing import Union
+
 import torch
 import torch.nn.functional as F
 from dotenv import find_dotenv, load_dotenv
@@ -25,16 +27,35 @@ class SUPREME(Module):
     Training SUPREME model
     """
 
-    def __init__(self, in_size: int, hid_size: int, out_size: int):
+    def __init__(
+        self,
+        in_size: int,
+        hid_size: int,
+        out_size: int,
+        activation_function: str = "relu",
+        drop_out=True,
+    ):
         super().__init__()
         self.conv1 = GCNConv(in_size, hid_size)
         self.conv2 = GCNConv(hid_size, out_size)
+        self.activ_func = activation_function
+        self.drop_out = drop_out
 
     def forward(self, data: Data):
         x, edge_index, edge_weight = data.x, data.edge_index, data.edge_attr
         x_emb = self.conv1(x, edge_index, edge_weight)
-        x = F.relu(x_emb)
-        x = F.dropout(x, training=self.training)
+
+        if self.activ_func == "relu":
+            active_func = F.relu
+        if self.activ_func == "sigmoid":
+            active_func = F.sigmoid
+        if self.activ_func == "tanh":
+            active_func = F.tanh
+
+        x = active_func(x_emb)
+        if self.drop_out:
+            x = F.dropout(x, training=self.training)
+
         x = self.conv2(x, edge_index, edge_weight)
         return x, x_emb
 
@@ -271,3 +292,16 @@ class EncoderEntireInput:
 #     num_nodes, (non_mask_edges.sum(),), device=DEVICE
 # )
 # data.neg_edge_labels = neg_edge_labels
+
+
+# def rep_model_factory(model_choice: str) -> Union[
+#     SupremeClassification,
+#     SupremeClusteringLink,
+#     EncoderDecoder,
+#     EncoderInnerProduct,
+#     EncoderEntireInput,
+# ]:
+#     models = {
+#         "classification": SupremeClassification,
+#         "discriminator":
+#     }

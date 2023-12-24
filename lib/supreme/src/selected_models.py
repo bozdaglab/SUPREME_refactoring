@@ -28,7 +28,12 @@ from torch import Tensor
 from torch.nn import Module
 from torch_geometric.data import Data
 from torch_geometric.nn import Node2Vec
-from torch_geometric.utils import negative_sampling, train_test_split_edges
+from torch_geometric.utils import (
+    coalesce,
+    negative_sampling,
+    remove_self_loops,
+    train_test_split_edges,
+)
 from torch_geometric.utils.num_nodes import maybe_num_nodes
 
 DEVICE = torch.device("cpu")
@@ -111,6 +116,9 @@ class GCNUnsupervised:
         train_valid_idx, test_idx = random_split(new_x=self.new_x)
         if isinstance(edge_index, dict):
             edge_index = pd.DataFrame(edge_index).T
+
+        # use index to mask inorder to generate the val, test, and train
+        # index_to_mask (e.g, index_to_mask(train_index, size=y.size(0)))
         data = make_data(new_x=self.new_x, edge_index=edge_index)
         if data_generation_types == SelectModel.node2vec.name:
             node2vec = Node2Vec(
@@ -132,7 +140,7 @@ class GCNUnsupervised:
         elif data_generation_types == SelectModel.train_test.name:
             data.num_nodes = maybe_num_nodes(data.edge_index)
             data = train_test_split_edges(data=data)
-        else:
+        elif data_generation_types == "else":
             data.pos_edge_labels = pos_neg(edge_index, "link", 1)
             data.neg_edge_labels = negative_sampling(
                 data.pos_edge_labels, self.new_x.size(0)
@@ -162,7 +170,7 @@ def make_data(new_x: Tensor, edge_index: pd.DataFrame) -> Data:
     Return:
         A data object
     """
-    return Data(
+    data = Data(
         x=new_x,
         edge_index=torch.tensor(
             edge_index[edge_index.columns[0:2]].transpose().values,
@@ -173,6 +181,9 @@ def make_data(new_x: Tensor, edge_index: pd.DataFrame) -> Data:
             device=DEVICE,
         ).float(),
     )
+    edge_index, _ = remove_self_loops(data.edge_index)
+    data.edge_index = coalesce(edge_index=edge_index, num_nodes=new_x.shape[0])
+    return data
 
 
 def train_test_valid(
@@ -200,7 +211,7 @@ def train_test_valid(
     Return:
         A data object that holds train, test, and validation indexes
     """
-    if isinstance(labels, pd.DataFrame):
+    if labels is not None:
         try:
             X = data.x[train_valid_idx.indices]
             y = data.y[train_valid_idx.indices]

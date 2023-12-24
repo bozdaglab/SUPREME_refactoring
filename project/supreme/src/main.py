@@ -130,10 +130,10 @@ new_dataset, labels = set_same_users(
     sample_data=sample_data, users=users, labels=labels
 )
 
-ray.init()
+# ray.init()
 
 
-@ray.remote(num_cpus=os.cpu_count())
+# @ray.remote(num_cpus=os.cpu_count())
 def compute_similarity(new_dataset: Dict, stat: str):
     similarity_matrix_generation(new_dataset=new_dataset, stat=stat)
 
@@ -142,7 +142,7 @@ if os.path.exists(EDGES):
     pass
 else:
     similarity_result_ray = [
-        compute_similarity.remote(new_dataset, stat) for stat in STAT_METHOD
+        compute_similarity(new_dataset, stat) for stat in STAT_METHOD
     ]
     ray.wait(similarity_result_ray)
 
@@ -154,7 +154,7 @@ if os.path.exists(path_embeggings):
     pass
 else:
     embeddings_result_ray = [
-        node_feature_generation.remote(
+        node_feature_generation(
             new_dataset=new_dataset,
             labels=labels,
             feature_type=feature_type,
@@ -176,7 +176,6 @@ for stat in os.listdir(EDGES):
             new_x = torch.tensor(new_x.values, dtype=torch.float32)
         train_valid_idx, test_idx = random_split(new_x)
         node_embedding_generation(
-            stat=stat,
             new_x=new_x,
             labels=labels,
             final_correlation=final_correlation,

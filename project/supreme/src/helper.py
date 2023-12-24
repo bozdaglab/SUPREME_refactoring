@@ -125,7 +125,7 @@ def set_same_users(sample_data: Dict, users: Dict, labels: Dict) -> Dict:
         new_dataset[file_name] = data[data.index.isin(shared_users)].set_index(
             shared_users_encoded
         )
-    return new_dataset, labels[shared_users]
+    return new_dataset, labels[shared_users].reset_index(drop=True)
 
 
 def drop_rows(application_train: pd.DataFrame, gh: List[str]) -> pd.DataFrame:

@@ -13,6 +13,9 @@ from sklearn.cluster import (
     MeanShift,
     SpectralClustering,
 )
+
+# from xgboost_ray import train, RayParams
+# from ray import tune
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LogisticRegression, SGDClassifier
 from sklearn.metrics import (
@@ -111,9 +114,31 @@ class MLModels:
         }
         fit_params = {
             "early_stopping_rounds": 10,
-            "eval_metric": "mlogloss",
+            "eval_metric": ["logloss", "error"],
             "eval_set": [(self.x_train, self.y_train)],
         }
+
+        # fit_params = {
+        #     "tree_method": "approx",
+        #     "objective": "binary:logistic",
+        #     "eval_metric": ["logloss", "error"],
+        #     "eta": tune.loguniform(1e-4, 1e-1),
+        #     "subsample": tune.uniform(0.5, 1.0),
+        #     "max_depth": tune.randint(1, 9)
+        # }
+        # ray_params = RayParams(
+        #     num_actors=4,
+        #     gpus_per_actor=1,
+        # )
+
+        # result = tune.run(
+        # tune.with_parameters(ray_params=ray_params),
+        # train_model,
+        # config=fit_params,
+        # metric="train-error",
+        # mode="min",
+        # num_samples=4,
+        # resources_per_trial=ray_params.get_tune_resources())
 
         search = RandomizedSearchCV(
             estimator=XGBClassifier(

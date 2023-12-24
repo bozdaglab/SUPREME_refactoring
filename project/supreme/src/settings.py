@@ -18,12 +18,12 @@ INT_MOTHOD_CLASSIFICATION = os.environ.get("INT_MOTHOD_CLASSIFICATION")
 NUMBER_FEATURES = [50]
 X_ITER = 30
 SELECTION_METHOD = [
-    "lasso",
+    # "lasso",
     "RFE",
-    "SelectFromModel",
-    "BorutaPy",
-    "pearson",
-    ["BorutaPy", "pearson", "RFE", "SelectFromModel", "lasso"],
+    # "SelectFromModel",
+    # "BorutaPy",
+    # "pearson",
+    # ["BorutaPy", "pearson", "RFE", "SelectFromModel", "lasso"],
 ]
 # ]
 # "SelectBySingleFeaturePerformance",
