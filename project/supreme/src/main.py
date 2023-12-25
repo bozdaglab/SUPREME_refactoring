@@ -130,10 +130,10 @@ new_dataset, labels = set_same_users(
     sample_data=sample_data, users=users, labels=labels
 )
 
-# ray.init()
+ray.init()
 
 
-# @ray.remote(num_cpus=os.cpu_count())
+@ray.remote(num_cpus=os.cpu_count())
 def compute_similarity(new_dataset: Dict, stat: str):
     similarity_matrix_generation(new_dataset=new_dataset, stat=stat)
 

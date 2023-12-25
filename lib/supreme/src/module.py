@@ -1,15 +1,19 @@
 # from typing import Union
 
+import logging
+
 import torch
 import torch.nn.functional as F
 from dotenv import find_dotenv, load_dotenv
 from learning_types import LearningTypes
+from set_logging import set_log_config
 from torch.nn import Linear, Module
 from torch_geometric.data import Data
 from torch_geometric.nn import ARGVA, GAE, GCNConv
 
 # from torch_geometric.nn.models.autoencoder import InnerProductDecoder
-
+set_log_config()
+logger = logging.getLogger()
 load_dotenv(find_dotenv())
 
 DEVICE = torch.device("cpu")

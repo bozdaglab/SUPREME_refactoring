@@ -74,7 +74,10 @@ class GCNSupervised:
         if multi_labels:
             data.y = torch.tensor(self.labels[col].values, dtype=torch.float32)
         else:
-            data.y = torch.tensor(self.labels.values.reshape(1, -1)[0]).long()
+            try:
+                data.y = torch.tensor(self.labels.values.reshape(1, -1)[0]).long()
+            except AttributeError:
+                data.y = torch.tensor(self.labels).long()
         return train_test_valid(
             data=data,
             train_valid_idx=train_valid_idx,

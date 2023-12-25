@@ -1,3 +1,4 @@
+import logging
 import os
 import statistics
 from functools import partial
@@ -15,6 +16,7 @@ from helper import nan_checker, row_col_ratio
 from learning_types import LearningTypes
 from pre_processings import pre_processing
 from ray import tune
+from ray.air import Checkpoint, session
 from ray.tune.schedulers import ASHAScheduler
 from selected_models import (
     GCNSupervised,
@@ -23,6 +25,7 @@ from selected_models import (
     select_model,
     select_optimizer,
 )
+from set_logging import set_log_config
 from settings import (  # HIDDEN_SIZE,; LEARNING_RATE,
     EMBEDDINGS,
     LEARNING,
@@ -37,7 +40,23 @@ from settings import (  # HIDDEN_SIZE,; LEARNING_RATE,
 )
 from torch import Tensor
 
+set_log_config()
+logger = logging.getLogger()
 DEVICE = torch.device("cpu")
+
+
+config = {
+    "hidden_size": tune.choice([2**i for i in range(4, 9)]),
+    "lr": tune.loguniform(1e-4, 1e-1),
+    # "batch_size": tune.choice([2, 4, 8, 16])
+}
+scheduler = ASHAScheduler(
+    metric="loss",
+    mode="min",
+    max_t=20,
+    grace_period=1,
+    reduction_factor=2,
+)
 
 
 # @ray.remote(num_cpus=os.cpu_count())
@@ -65,7 +84,6 @@ def node_feature_generation(
     # selected_features = []
     for _, feat in new_dataset.items():
         if row_col_ratio(feat):
-            feat = feat[feat.columns[0:200]]
             if nan_checker(feat):
                 feat = pre_processing(feat)
             # feat, final_features = select_features(
@@ -178,12 +196,13 @@ def node_embedding_generation(
                         name=name,
                         model_choice=model_choice,
                     ),
-                    resources_per_trial={"cpu": 2, "gpu": 0},
+                    resources_per_trial={"cpu": os.cpu_count(), "gpu": 0},
                     config=config,
                     num_samples=10,
                     scheduler=scheduler,
                 )
                 # train_steps(
+                #     config=config,
                 #     learning_model=learning_model,
                 #     edge_index=edge_index,
                 #     name=name,
@@ -227,11 +246,11 @@ def add_row_features(emb: Tensor, is_first: bool = True) -> Tensor:
 
 
 def train_steps(
+    config: Dict,
     learning_model: Union[GCNUnsupervised, GCNSupervised],
     edge_index: pd.DataFrame,
     name: str,
     model_choice: str,
-    config: Dict,
     data_generation_types: Optional[str] = None,
     super_unsuper_model: Optional[str] = None,
 ):
@@ -256,12 +275,24 @@ def train_steps(
     )
     av_valid_losses = []
     optimizer = select_optimizer(
-        OPTIM, model, config["lr"]
+        optimizer_type=OPTIM, model=model, learning_rate=config["lr"]
     )  # add OPTIM to the actual function
-    for _ in range(X_TIME2):
+    checkpoint = session.get_checkpoint()
+
+    if checkpoint:
+        checkpoint_state = checkpoint.to_dict()
+        # start_epoch = checkpoint_state["epoch"]
+        model.load_state_dict(checkpoint_state["net_state_dict"])
+        optimizer.load_state_dict(checkpoint_state["optimizer_state_dict"])
+    # else:
+    #     start_epoch = 0
+    for x_times in range(X_TIME2):
         min_valid_loss = np.Inf
         patience_count = 0
         for epoch in range(MAX_EPOCHS):
+            logger.info(
+                f"Number of times: {x_times}, model: {model}, optimizer: {optimizer}"
+            )
             model.train(optimizer, data)
             this_valid_loss, emb = model.validate(data=data)
             if this_valid_loss < min_valid_loss:
@@ -273,24 +304,23 @@ def train_steps(
             if epoch >= MIN_EPOCHS and patience_count >= PATIENCE:
                 break
 
+            checkpoint_data = {
+                "epoch": epoch,
+                "net_state_dict": model.state_dict(),
+                "optimizer_state_dict": optimizer.state_dict(),
+            }
+            checkpoint = Checkpoint.from_dict(checkpoint_data)
+
+            session.report(
+                {"loss": min_valid_loss, "accuracy": min_valid_loss},
+                checkpoint=checkpoint,
+            )
+
         av_valid_losses.append(min_valid_loss.item())
 
+    print("Finished Training")
     av_valid_loss = round(statistics.median(av_valid_losses), 3)
     if av_valid_loss < best_ValidLoss:
         best_ValidLoss = av_valid_loss
         selected_emb = this_emb
     pd.DataFrame(selected_emb).to_pickle(f"{name}")
-
-
-config = {
-    "hidden_size": tune.choice([2**i for i in range(4, 9)]),
-    "lr": tune.loguniform(1e-4, 1e-1),
-    # "batch_size": tune.choice([2, 4, 8, 16])
-}
-scheduler = ASHAScheduler(
-    metric="loss",
-    mode="min",
-    max_t=20,
-    grace_period=1,
-    reduction_factor=2,
-)
