@@ -1,3 +1,4 @@
+"ray[tune]"
 Boruta
 fastparquet
 feature_engine
@@ -10,9 +11,9 @@ pre-commit==2.15.0
 pyarrow
 pytest==5.4.1
 python-dotenv==0.19.1
-python-dotenv==0.19.1
 ray
 sklearn-genetic
 torch
 torch_geometric
 xgboost
+xgboost_ray

@@ -18,15 +18,15 @@ INT_MOTHOD_CLASSIFICATION = os.environ.get("INT_MOTHOD_CLASSIFICATION")
 NUMBER_FEATURES = [50]
 X_ITER = 30
 SELECTION_METHOD = [
-    "lasso",
+    # "lasso",
     "RFE",
-    "SelectFromModel",
-    "BorutaPy",
-    "pearson",
-    ["BorutaPy", "pearson", "RFE", "SelectFromModel", "lasso"],
+    # "SelectFromModel",
+    # "BorutaPy",
+    # "pearson",
+    # ["BorutaPy", "pearson", "RFE", "SelectFromModel", "lasso"],
 ]
 # ]
-#    "SelectBySingleFeaturePerformance",
+# "SelectBySingleFeaturePerformance",
 # "SelectByShuffling",
 #  "GeneticSelectionCV",
 #  "SequentialFeatureSelector",
@@ -35,8 +35,8 @@ METHYLATION_S = float(os.environ.get("METHYLATION_S"))
 MICRO = float(os.environ.get("MICRO"))
 CNA = float(os.environ.get("CNA"))
 MODELS_B = ["RF"]
-# UNSUPERVISED_MODELS = json.loads(os.environ.get("UNSUPERVISED_MODELS"))
-# POS_NEG_MODELS = json.loads(os.environ.get("POS_NEG_MODELS"))
+UNSUPERVISED_MODELS = json.loads(os.environ.get("UNSUPERVISED_MODELS"))
+POS_NEG_MODELS = json.loads(os.environ.get("POS_NEG_MODELS"))
 LOGGING_LEVEL = os.environ.get("LOGGING_LEVEL")
 IMPUTER_NAME_SUBSET = os.environ.get("IMPUTER_NAME_SUBSET")
 IMPUTER_NAME_WHOLE = os.environ.get("IMPUTER_NAME_WHOLE")
@@ -73,8 +73,6 @@ EMBEDDINGS = BASE_DATAPATH / "embeddings"
 EDGES = BASE_DATAPATH / "edges"
 DATA = BASE_DATAPATH / "data"
 LABELS = BASE_DATAPATH / "labels"
-
-
 X_TIME2 = int(os.environ.get("X_TIME2"))
 MAX_EPOCHS = int(os.environ.get("MAX_EPOCHS"))
 MIN_EPOCHS = int(os.environ.get("MIN_EPOCHS"))

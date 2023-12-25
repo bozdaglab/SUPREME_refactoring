@@ -1,10 +1,10 @@
 import os
 from collections import Counter, defaultdict
-from pathlib import Path
 from typing import Dict, List, Tuple
 
 import numpy as np
 import pandas as pd
+import ray
 import torch
 import xgboost as xgb
 from boruta import BorutaPy
@@ -15,7 +15,7 @@ from learning_types import FeatureSelectionType
 from mlxtend.feature_selection import SequentialFeatureSelector
 from pre_processings import pre_processing
 from scipy.stats import pearsonr, spearmanr
-from settings import CNA, METHYLATION_P, METHYLATION_S, MICRO
+from settings import CNA, EDGES, METHYLATION_P, METHYLATION_S, MICRO
 from sklearn.feature_selection import RFE, SelectFromModel
 from sklearn.preprocessing import LabelEncoder
 from torch import Tensor
@@ -120,22 +120,24 @@ def get_stat_methos(stat_method: str):
 def set_same_users(sample_data: Dict, users: Dict, labels: Dict) -> Dict:
     new_dataset = defaultdict()
     shared_users = search_dictionary(users, len(users) - 1)
-    shared_users = sorted(shared_users)[0:50]
+    shared_users = sorted(shared_users)[0:100]
     shared_users_encoded = LabelEncoder().fit_transform(shared_users)
     for file_name, data in sample_data.items():
         new_dataset[file_name] = data[data.index.isin(shared_users)].set_index(
             shared_users_encoded
         )
-    return new_dataset, labels[shared_users]
+    return new_dataset, labels[shared_users].reset_index(drop=True)
 
 
 def drop_rows(application_train: pd.DataFrame, gh: List[str]) -> pd.DataFrame:
     return application_train[gh].reset_index(drop=True)
 
 
-def similarity_matrix_generation(new_dataset: Dict, stat: str, path_dir: Path):
+@ray.remote(num_cpus=os.cpu_count())
+def similarity_matrix_generation(new_dataset: Dict, stat: str):
     # parqua dataset, parallel
     stat_model = get_stat_methos(stat)
+    path_dir = EDGES / stat
     if not os.path.exists(path_dir):
         os.makedirs(path_dir)
 
@@ -259,5 +261,5 @@ def load_models2(
             n_estimators="auto",
             verbose=2,
             random_state=42,
-            max_iter=10,
+            max_iter=50,
         )
