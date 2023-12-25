@@ -4,6 +4,7 @@ from typing import Dict, List, Tuple
 
 import numpy as np
 import pandas as pd
+import ray
 import torch
 import xgboost as xgb
 from boruta import BorutaPy
@@ -132,6 +133,7 @@ def drop_rows(application_train: pd.DataFrame, gh: List[str]) -> pd.DataFrame:
     return application_train[gh].reset_index(drop=True)
 
 
+@ray.remote(num_cpus=os.cpu_count())
 def similarity_matrix_generation(new_dataset: Dict, stat: str):
     # parqua dataset, parallel
     stat_model = get_stat_methos(stat)

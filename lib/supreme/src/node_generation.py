@@ -7,8 +7,7 @@ from typing import Dict, Optional, Union
 
 import numpy as np
 import pandas as pd
-
-# import ray
+import ray
 import torch
 
 # from feature_selections import select_features
@@ -59,7 +58,7 @@ scheduler = ASHAScheduler(
 )
 
 
-# @ray.remote(num_cpus=os.cpu_count())
+@ray.remote(num_cpus=os.cpu_count())
 def node_feature_generation(
     new_dataset: Dict,
     labels: Dict,
