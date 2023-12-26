@@ -85,6 +85,7 @@ def node_feature_generation(
         if row_col_ratio(feat):
             if nan_checker(feat):
                 feat = pre_processing(feat)
+            # add an inner remote function and use get to get the result of the inner one before proceding
             # feat, final_features = select_features(
             #     application_train=feat, labels=labels, feature_type=feature_type
             # )
@@ -287,6 +288,7 @@ def train_steps(
     #     start_epoch = 0
     for x_times in range(X_TIME2):
         min_valid_loss = np.Inf
+        this_emb = None
         patience_count = 0
         for epoch in range(MAX_EPOCHS):
             logger.info(
@@ -311,7 +313,11 @@ def train_steps(
             checkpoint = Checkpoint.from_dict(checkpoint_data)
 
             session.report(
-                {"loss": min_valid_loss, "accuracy": min_valid_loss},
+                {
+                    "loss": min_valid_loss,
+                    "accuracy": min_valid_loss,
+                    "embeddings": this_emb,
+                },
                 checkpoint=checkpoint,
             )
 

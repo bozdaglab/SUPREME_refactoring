@@ -15,5 +15,6 @@ ray
 sklearn-genetic
 torch
 torch_geometric
+tune_sklearn
 xgboost
 xgboost_ray

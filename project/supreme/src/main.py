@@ -6,7 +6,7 @@ import time
 import warnings
 from collections import defaultdict
 from itertools import combinations, product
-from typing import Dict, List
+from typing import List
 
 import pandas as pd
 import ray
@@ -133,16 +133,16 @@ new_dataset, labels = set_same_users(
 ray.init()
 
 
-@ray.remote(num_cpus=os.cpu_count())
-def compute_similarity(new_dataset: Dict, stat: str):
-    similarity_matrix_generation.remote(new_dataset=new_dataset, stat=stat)
+# @ray.remote(num_cpus=os.cpu_count())
+# def compute_similarity(new_dataset: Dict, stat: str):
+#     similarity_matrix_generation.remote(new_dataset=new_dataset, stat=stat)
 
 
 if os.path.exists(EDGES):
     pass
 else:
     similarity_result_ray = [
-        compute_similarity.remote(new_dataset, stat) for stat in STAT_METHOD
+        similarity_matrix_generation.remote(new_dataset, stat) for stat in STAT_METHOD
     ]
     ray.wait(similarity_result_ray)
 

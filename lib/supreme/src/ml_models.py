@@ -4,6 +4,7 @@ from typing import Dict, Optional, Tuple
 import lightgbm as lgb
 import numpy as np
 import pandas as pd
+from ray import tune
 from settings import X_TIME
 from sklearn.cluster import (
     DBSCAN,
@@ -13,9 +14,6 @@ from sklearn.cluster import (
     MeanShift,
     SpectralClustering,
 )
-
-# from xgboost_ray import train, RayParams
-# from ray import tune
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LogisticRegression, SGDClassifier
 from sklearn.metrics import (
@@ -30,7 +28,10 @@ from sklearn.metrics import (
 from sklearn.model_selection import RandomizedSearchCV
 from sklearn.neural_network import MLPClassifier
 from sklearn.svm import SVC
+from tune_sklearn import TuneSearchCV
 from xgboost import XGBClassifier
+
+# from xgboost_ray import RayParams, train
 
 logger = logging.getLogger(__name__)
 
@@ -118,27 +119,28 @@ class MLModels:
             "eval_set": [(self.x_train, self.y_train)],
         }
 
-        # fit_params = {
-        #     "tree_method": "approx",
-        #     "objective": "binary:logistic",
-        #     "eval_metric": ["logloss", "error"],
-        #     "eta": tune.loguniform(1e-4, 1e-1),
-        #     "subsample": tune.uniform(0.5, 1.0),
-        #     "max_depth": tune.randint(1, 9)
-        # }
+        fit_params = {
+            "tree_method": "approx",
+            "objective": "binary:logistic",
+            "eval_metric": ["logloss", "error"],
+            "eta": tune.loguniform(1e-4, 1e-1),
+            "subsample": tune.uniform(0.5, 1.0),
+            "max_depth": tune.randint(1, 9),
+        }
         # ray_params = RayParams(
         #     num_actors=4,
         #     gpus_per_actor=1,
         # )
 
         # result = tune.run(
-        # tune.with_parameters(ray_params=ray_params),
-        # train_model,
-        # config=fit_params,
-        # metric="train-error",
-        # mode="min",
-        # num_samples=4,
-        # resources_per_trial=ray_params.get_tune_resources())
+        #     tune.with_parameters(ray_params=ray_params),
+        #     train_model,
+        #     config=fit_params,
+        #     metric="train-error",
+        #     mode="min",
+        #     num_samples=4,
+        #     resources_per_trial=ray_params.get_tune_resources(),
+        # )
 
         search = RandomizedSearchCV(
             estimator=XGBClassifier(
@@ -176,32 +178,30 @@ class MLModels:
 
     def LGBM(self):
         param_dists = {
-            "n_estimators": [int(x) for x in np.linspace(start=1, stop=5, num=1)],
-            "colsample_bytree": [0.7, 0.8],
-            "max_depth": [1, 5, 7],
-            "num_leaves": [5, 7, 9],
-            "reg_alpha": [1.1, 1.2, 1.3],
-            "reg_lambda": [1.1, 1.2, 1.3],
-            "min_split_gain": [0.3, 0.4],
-            "subsample": [0.7, 0.8, 0.9],
-            "subsample_freq": [3],
-            "boosting_type": ["gbdt", "dart"],
-            "learning_rate": [0.005, 0.01],
-        }
-        search = RandomizedSearchCV(
-            estimator=lgb.LGBMClassifier(
-                use_label_encoder=False,
-                n_estimators=1000,
-                fit_params=param_dists,
-                objective="multi:softprob",
-                eval_metric="mlogloss",
-                verbosity=0,
+            "n_estimators": tune.choice(
+                [int(x) for x in np.linspace(start=1, stop=5, num=1)]
             ),
+            "colsample_bytree": tune.choice([0.7, 0.8]),
+            "max_depth": tune.choice([1, 5, 7]),
+            "num_leaves": tune.choice([5, 7, 9]),
+            "reg_alpha": tune.choice([1.1, 1.2, 1.3]),
+            "reg_lambda": tune.choice([1.1, 1.2, 1.3]),
+            "min_split_gain": tune.choice([0.3, 0.4]),
+            "subsample": tune.choice([0.7, 0.8, 0.9]),
+            "subsample_freq": tune.choice([3]),
+            "boosting_type": tune.choice(["gbdt", "dart"]),
+            "learning_rate": tune.choice([0.005, 0.01]),
+        }
+        search = TuneSearchCV(
+            lgb.LGBMClassifier,
             return_train_score=True,
             scoring="f1_macro",
             param_distributions=param_dists,
             cv=4,
-            n_iter=X_TIME,
+            n_trails=X_TIME,
+            n_jobs=-1,
+            early_stopping=True,
+            search_optimization="optuna",
             verbose=0,
         )
 
