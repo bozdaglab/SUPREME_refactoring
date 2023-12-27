@@ -25,13 +25,10 @@ from sklearn.metrics import (
     silhouette_score,
     v_measure_score,
 )
-from sklearn.model_selection import RandomizedSearchCV
 from sklearn.neural_network import MLPClassifier
 from sklearn.svm import SVC
 from tune_sklearn import TuneSearchCV
 from xgboost import XGBClassifier
-
-# from xgboost_ray import RayParams, train
 
 logger = logging.getLogger(__name__)
 
@@ -83,103 +80,60 @@ class MLModels:
                 (128, 32),
                 (256, 32),
                 (512, 32),
-            ]
+            ],
+            "solver": ["adam"],
+            "activation": ["relu", "sgd"],
         }
-        search = RandomizedSearchCV(
-            estimator=MLPClassifier(
-                solver="adam", activation="relu", early_stopping=True
-            ),
+        search = TuneSearchCV(
+            estimator=MLPClassifier(),
             return_train_score=True,
             scoring="f1_macro",
             param_distributions=params,
             cv=4,
-            n_iter=X_TIME,
+            early_stopping=True,
+            n_trials=X_TIME,
             verbose=0,
+            random_state=0,
         )
         search.fit(self.x_train, self.y_train)
-        return (
-            MLPClassifier(
-                solver="adam",
-                activation="relu",
-                early_stopping=True,
-                hidden_layer_sizes=search.best_params_["hidden_layer_sizes"],
-            ),
-            search,
-        )
+        return search.best_estimator
 
     def XGB(self):
-        params = {
-            "reg_alpha": range(0, 6, 1),
-            "reg_lambda": range(1, 5, 1),
-            "learning_rate": [0, 0.001, 0.01, 1],
-        }
         fit_params = {
-            "early_stopping_rounds": 10,
-            "eval_metric": ["logloss", "error"],
-            "eval_set": [(self.x_train, self.y_train)],
-        }
-
-        fit_params = {
-            "tree_method": "approx",
-            "objective": "binary:logistic",
+            "reg_alpha": tune.choice([0, 1, 2, 3, 4, 5, 6]),
+            "reg_lambda": tune.choice([0, 1, 2, 3, 4, 5]),
+            "learning_rate": tune.choice([0, 0.01, 0.001, 0.0001, 0.02, 0.002, 0.0002]),
+            "tree_method": ["approx"],
+            "objective": ["binary:logistic"],
             "eval_metric": ["logloss", "error"],
             "eta": tune.loguniform(1e-4, 1e-1),
             "subsample": tune.uniform(0.5, 1.0),
-            "max_depth": tune.randint(1, 9),
-        }
-        # ray_params = RayParams(
-        #     num_actors=4,
-        #     gpus_per_actor=1,
-        # )
-
-        # result = tune.run(
-        #     tune.with_parameters(ray_params=ray_params),
-        #     train_model,
-        #     config=fit_params,
-        #     metric="train-error",
-        #     mode="min",
-        #     num_samples=4,
-        #     resources_per_trial=ray_params.get_tune_resources(),
-        # )
-
-        search = RandomizedSearchCV(
-            estimator=XGBClassifier(
-                use_label_encoder=False,
-                n_estimators=1000,
-                fit_params=fit_params,
-                objective="multi:softprob",
-                eval_metric="mlogloss",
-                verbosity=0,
+            "max_depth": tune.choice([30, 50, 70, 90, 100, 150]),
+            "n_estimators": tune.choice(
+                [int(x) for x in np.linspace(start=50, stop=400, num=50)]
             ),
+        }
+        search = TuneSearchCV(
+            estimator=XGBClassifier(),
             return_train_score=True,
             scoring="f1_macro",
-            param_distributions=params,
+            param_distributions=fit_params,
             cv=4,
-            n_iter=X_TIME,
+            n_trials=X_TIME,
+            search_optimization="hyperopt",
+            early_stopping=True,
             verbose=0,
+            random_state=0,
         )
 
         search.fit(self.x_train, self.y_train)
 
-        return (
-            XGBClassifier(
-                use_label_encoder=False,
-                objective="multi:softprob",
-                eval_metric="mlogloss",
-                verbosity=0,
-                n_estimators=1000,
-                fit_params=fit_params,
-                reg_alpha=search.best_params_["reg_alpha"],
-                reg_lambda=search.best_params_["reg_lambda"],
-                learning_rate=search.best_params_["learning_rate"],
-            ),
-            search,
-        )
+        return search.best_estimator
 
     def LGBM(self):
         param_dists = {
             "n_estimators": tune.choice(
-                [int(x) for x in np.linspace(start=1, stop=5, num=1)]
+                [int(x) for x in np.linspace(start=50, stop=400, num=50)]
             ),
             "colsample_bytree": tune.choice([0.7, 0.8]),
             "max_depth": tune.choice([1, 5, 7]),
@@ -193,7 +147,7 @@ class MLModels:
             "learning_rate": tune.choice([0.005, 0.01]),
         }
         search = TuneSearchCV(
-            lgb.LGBMClassifier,
+            lgb.LGBMClassifier(),
             return_train_score=True,
             scoring="f1_macro",
             param_distributions=param_dists,
@@ -207,60 +161,46 @@ class MLModels:
 
         search.fit(self.x_train, self.y_train)
 
-        return (
-            lgb.LGBMClassifier(
-                use_label_encoder=False,
-                objective="multi:softprob",
-                eval_metric="mlogloss",
-                verbosity=0,
-                n_estimators=1000,
-                fit_params=param_dists,
-                reg_alpha=search.best_params_["reg_alpha"],
-                reg_lambda=search.best_params_["reg_lambda"],
-                learning_rate=search.best_params_["learning_rate"],
-            ),
-            search,
-        )
+        return search.best_estimator
 
     def RF(self):
-        # max_depth = [int(x) for x in np.linspace(10, 110, num=11)]
-        # max_depth.append(None)
-        # params = {
-        #     "n_estimators": [int(x) for x in np.linspace(start=200, stop=2000, num=100)]
-        # }
-        # search = RandomizedSearchCV(
-        #     estimator=RandomForestClassifier(),
-        #     return_train_score=True,
-        #     scoring="f1_macro",
-        #     param_distributions=params,
-        #     cv=4,
-        #     n_iter=X_TIME,
-        #     verbose=0,
-        # )
-        # search.fit(self.x_train, self.y_train)
-        return RandomForestClassifier(n_estimators=10)  # ,
-        # search,
-        # )
+        max_depth = [int(x) for x in np.linspace(50, 300, num=50)]
+        max_depth.append(None)
+        params = {
+            "n_estimators": [int(x) for x in np.linspace(start=50, stop=400, num=50)]
+        }
+        search = TuneSearchCV(
+            estimator=RandomForestClassifier(),
+            return_train_score=True,
+            scoring="f1_macro",
+            param_distributions=params,
+            cv=4,
+            n_iter=X_TIME,
+            search_optimization="optuna",
+            early_stopping=True,
+            verbose=0,
+        )
+        search.fit(self.x_train, self.y_train)
+        return search.best_estimator
 
     def SVM(self):
         params = {
             "C": [0.001, 0.01, 0.1, 1, 10, 100, 1000],
             "gamma": [1, 0.1, 0.01, 0.001],
         }
-        search = RandomizedSearchCV(
+        search = TuneSearchCV(
             SVC(),
             return_train_score=True,
             scoring="f1_macro",
             param_distributions=params,
             cv=4,
             n_iter=X_TIME,
+            search_optimization="optuna",
+            early_stopping=True,
             verbose=0,
         )
         search.fit(self.x_train, self.y_train)
-        return (
-            SVC(C=search.best_params_["C"], gamma=search.best_params_["gamma"]),
-            search,
-        )
+        return search.best_estimator
 
     def SGD(self):
         param_dists = {
@@ -268,20 +208,19 @@ class MLModels:
             "alpha": [0.01, 0.001, 0.0001],
             "epsilon": [0.01, 0.001],
         }
-        search = RandomizedSearchCV(
+        search = TuneSearchCV(
             SGDClassifier(),
             return_train_score=True,
             scoring="f1_macro",
             param_distributions=param_dists,
             cv=4,
             n_iter=X_TIME,
+            early_stopping=True,
+            search_optimization="optuna",
             verbose=0,
         )
         search.fit(self.x_train, self.y_train)
-        return (
-            SGDClassifier(),
-            search,
-        )
+        return search.best_estimator
 
     def LR(self):
         LRmodel = LogisticRegression(max_iter=300)
@@ -291,20 +230,19 @@ class MLModels:
             "class_weight": ["balanced"],
             "C": [1, 10, 100],
         }
-        search = RandomizedSearchCV(
+        search = TuneSearchCV(
             LRmodel(),
             return_train_score=True,
             scoring="f1_macro",
             param_distributions=logic_grid,
             cv=4,
             n_iter=X_TIME,
+            search_optimization="optuna",
+            early_stopping=True,
             verbose=0,
         )
         search.fit(self.x_train, self.y_train)
-        return (
-            LRmodel(),
-            search,
-        )
+        return search.best_estimator
 
     def get_result(
         self, model, results: Dict, X_test: np.ndarray, y_test: np.ndarray
@@ -367,22 +305,22 @@ class ClusteringModels:
             return None
 
     def KM(self):
-        # params = {
-        #     "n_clusters": [7, 8, 9, 10, 11],
-        #     "init": ["k-means++"],
-        #     "n_init": [10, 20, 30],
-        # }
+        params = {
+            "n_clusters": [7, 8, 9, 10, 11],
+            "init": ["k-means++"],
+            "n_init": [10, 20, 30],
+        }
 
-        # search = RandomizedSearchCV(
-        #     KMeans(),
-        #     param_distributions=params,
-        #     cv=4,
-        #     n_iter=X_TIME,
-        #     scoring=silhouette_score,
-        #     verbose=0,
-        # )
+        search = TuneSearchCV(
+            KMeans(),
+            param_distributions=params,
+            cv=4,
+            n_iter=X_TIME,
+            scoring=silhouette_score,
+            verbose=0,
+        )
 
-        # search.fit(self.x_train)
+        search.fit(self.x_train)
 
         # best_n_clusters = search.best_params_["n_clusters"]
         # best_init = search.best_params_["init"]
@@ -393,48 +331,46 @@ class ClusteringModels:
         # )
 
         # return kmeans_model.fit(self.x_train), search
-        best_k = 7
-        sil_score = 0.0
-        for n_clusters in [7, 8, 9]:
-            km = KMeans(
-                n_clusters=n_clusters, init="k-means++", n_init="auto", max_iter=100
-            )
-            score = silhouette_score(self.x_train, km.fit_predict(self.x_train))
-            if score > sil_score:
-                sil_score = score
-                best_k = n_clusters
-            print(
-                "For n_clusters =",
-                n_clusters,
-                "The average silhouette_score is :",
-                score,
-            )
-        print("-------------------------")
-        km = KMeans(n_clusters=best_k, init="k-means++", n_init="auto")
-        return km.fit(self.x_train), ""
+        return search.best_estimator
+        # best_k = 7
+        # sil_score = 0.0
+        # for n_clusters in [7, 8, 9]:
+        #     km = KMeans(
+        #         n_clusters=n_clusters, init="k-means++", n_init="auto", max_iter=100
+        #     )
+        #     score = silhouette_score(self.x_train, km.fit_predict(self.x_train))
+        #     if score > sil_score:
+        #         sil_score = score
+        #         best_k = n_clusters
+        #     print(
+        #         "For n_clusters =",
+        #         n_clusters,
+        #         "The average silhouette_score is :",
+        #         score,
+        #     )
+        # print("-------------------------")
+        # km = KMeans(n_clusters=best_k, init="k-means++", n_init="auto")
+        # return km.fit(self.x_train), ""
 
     def AFP(self):
-        # param = {
-        #     "damping" : np.arange(0.1, 0.8, 0.1),
-        #     "affinity": ["precomputed", "euclidean"]
-        # }
+        param = {
+            "damping": np.arange(0.1, 0.8, 0.1),
+            "affinity": ["precomputed", "euclidean"],
+        }
 
-        # def custome_score(estimator, x_train):
-        #     return silhouette_score(estimator.fit_predict(x_train), x_train)
+        def custome_score(estimator, x_train):
+            return silhouette_score(estimator.fit_predict(x_train), x_train)
 
-        # search = GridSearchCV (
-        #     AffinityPropagation(),
-        #     param_distributions=param,
-        #     scoring=custome_score,
-        #     cv=4,
-        #     n_iter=X_TIME,
-        #     verbose=0)
-        # search.fit(self.x_train)
-        # affinity_model = AffinityPropagation(
-        #     damping=search.best_params_["damping"],
-        #     affinity=search.best_params_["affinity"]
-        # )
-        return AffinityPropagation().fit(self.x_train), "Add_best_later"
+        search = TuneSearchCV(
+            AffinityPropagation(),
+            param_distributions=param,
+            scoring=custome_score,
+            cv=4,
+            n_iter=X_TIME,
+            verbose=0,
+        )
+        search.fit(self.x_train)
+        return search.best_estimator
 
     def get_result(
         self,
@@ -455,18 +391,15 @@ class ClusteringModels:
 
     def DBSCAN(self):
         dbscan_model = DBSCAN(eps=0.5, min_samples=5)
-        # param = {
-        #     "eps": np.arange(0.1, 0.7, 0.1),
-        #     "min_samples": [1, 5, 10, 15],
-        # }
-        # search = RandomizedSearchCV(
-        #     dbscan_model,
-        #     param_distributions=param,
-        #     n_iter=X_TIME,
-        #     verbose=0
-        # )
-        # search.fit(self.x_train)
-        return dbscan_model.fit(self.x_train), "Add_best_later"
+        param = {
+            "eps": np.arange(0.1, 0.7, 0.1),
+            "min_samples": [1, 5, 10, 15],
+        }
+        search = TuneSearchCV(
+            dbscan_model, param_distributions=param, n_iter=X_TIME, verbose=0
+        )
+        search.fit(self.x_train)
+        return search.best_estimator
 
     def AGC(self):
         agc = AgglomerativeClustering(
@@ -475,11 +408,8 @@ class ClusteringModels:
         return agc.fit(self.x_train), "Add_best_later"
 
     def MS(self):
-        """Add RandomizedSearchCV later"""
+        """Add TuneSearchCV later"""
         return MeanShift().fit(self.x_train), "Add_best_later"
 
     def SPC(self):
         return SpectralClustering(n_clusters=5).fit(self.x_train), "Add_best_later"
-
-
-# ["SPC","AGC", "KM", "APF"]
