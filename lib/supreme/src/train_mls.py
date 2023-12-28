@@ -66,12 +66,17 @@ def train_ml_model(
             )
             all_results[clustering_model] = get_ml_result(ml_model=ml_model)
         return all_results
-    ml_model = MLModels(
-        model=INT_MOTHOD_CLASSIFICATION,
-        x_train=X_train,
-        y_train=y_train,
-    )
-    return get_ml_result(ml_model=ml_model, X_test=X_test, y_test=y_test)
+    all_results = defaultdict()
+    for classification_model in INT_MOTHOD_CLASSIFICATION:
+        ml_model = MLModels(
+            model=classification_model,
+            x_train=X_train,
+            y_train=y_train,
+        )
+        all_results[classification_model] = get_ml_result(
+            ml_model=ml_model, X_test=X_test, y_test=y_test
+        )
+    return all_results
 
 
 def get_ml_result(
@@ -80,7 +85,7 @@ def get_ml_result(
     y_test: Optional[pd.DataFrame] = None,
 ):
 
-    model, search = ml_model.train_ml_model_factory()
+    model = ml_model.train_ml_model_factory()
     results = defaultdict(list)
     for _ in range(X_TIME2):
         ml_model.get_result(model=model, results=results, X_test=X_test, y_test=y_test)

@@ -2,6 +2,7 @@
 Boruta
 fastparquet
 feature_engine
+hyperopt
 lightgbm
 mlxtend
 numpy==1.23.3

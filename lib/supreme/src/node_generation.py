@@ -114,6 +114,7 @@ def node_feature_generation(
 
 
 def node_embedding_generation(
+    stat: str,
     new_x: Tensor,
     labels: Optional[pd.DataFrame],
     final_correlation: Dict,
@@ -134,12 +135,10 @@ def node_embedding_generation(
         Generate embeddings for each omic
     """
 
-    if not os.path.exists(EMBEDDINGS):
-        os.mkdir(EMBEDDINGS)
     for model_choice in LEARNING:
-        emb_path = EMBEDDINGS / model_choice
+        emb_path = EMBEDDINGS / model_choice / stat
         if not os.path.exists(emb_path):
-            os.mkdir(emb_path)
+            os.makedirs(emb_path)
         # embeddings_file = os.listdir(emb_path)
         # if embeddings_file:
         #     for name in embeddings_file:
@@ -155,7 +154,7 @@ def node_embedding_generation(
                 for data_gen_types, unsupervised_model in product(
                     POS_NEG_MODELS, UNSUPERVISED_MODELS
                 ):
-                    dir_path = f"{EMBEDDINGS}/{model_choice}/{data_gen_types}_{unsupervised_model}/{feature_type}"
+                    dir_path = f"{emb_path}/{data_gen_types}_{unsupervised_model}/{feature_type}"
                     if not os.path.exists(dir_path):
                         os.makedirs(dir_path)
                     list_dir = os.listdir(dir_path)

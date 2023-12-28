@@ -43,9 +43,8 @@ if not os.path.exists(BASE_DATAPATH):
     raise FileNotFoundError(f"no such a director {BASE_DATAPATH}")
 
 
-def combine_trails(ml_type: str) -> List[List[int]]:
+def combine_trails(base_path: str) -> List[List[int]]:
     final_trial_combs = defaultdict()
-    base_path = EMBEDDINGS / ml_type
     for file in os.listdir(base_path):
         t = range(len(os.listdir(base_path / file)))
         trial_combs = []
@@ -166,21 +165,23 @@ else:
 
     ray.wait(embeddings_result_ray)
 
-for stat in os.listdir(EDGES):
-    final_correlation = defaultdict()
-    for file in os.listdir(EDGES / stat):
-        final_correlation[file] = pd.read_pickle(EDGES / stat / file)
-    for idx, feature_type in enumerate(os.listdir(path_embeggings)):
-        new_x = pd.read_pickle(path_embeggings / feature_type)
-        if isinstance(new_x, pd.DataFrame):
-            new_x = torch.tensor(new_x.values, dtype=torch.float32)
-        train_valid_idx, test_idx = random_split(new_x)
-        node_embedding_generation(
-            new_x=new_x,
-            labels=labels,
-            final_correlation=final_correlation,
-            feature_type=feature_type,
-        )
+if not os.path.exists(EMBEDDINGS):
+    for stat in os.listdir(EDGES):
+        final_correlation = defaultdict()
+        for file in os.listdir(EDGES / stat):
+            final_correlation[file] = pd.read_pickle(EDGES / stat / file)
+        for idx, feature_type in enumerate(os.listdir(path_embeggings)):
+            new_x = pd.read_pickle(path_embeggings / feature_type)
+            if isinstance(new_x, pd.DataFrame):
+                new_x = torch.tensor(new_x.values, dtype=torch.float32)
+            train_valid_idx, test_idx = random_split(new_x)
+            node_embedding_generation(
+                stat=stat,
+                new_x=new_x,
+                labels=labels,
+                final_correlation=final_correlation,
+                feature_type=feature_type,
+            )
     # else:
     #     new_x = node_feature_generation(new_dataset=new_dataset, labels=labels)
     #     train_valid_idx, test_idx = random_split(new_x)
@@ -195,34 +196,35 @@ start2 = time.time()
 # )
 logger.info("SUPREME is integrating the embeddings..")
 for ml_type, stat in product(LEARNING, STAT_METHOD):
-    trial_combs = combine_trails(ml_type=f"{ml_type}/{stat}")
-    for trial_name, trial in trial_combs.items():
-        path_name = f"{EMBEDDINGS}\{ml_type}"
-        path_to_files = f"{path_name}/{stat}/{trial_name}"
-        result_path = f"{EMBEDDINGS}/result/{stat}/{trial_name}"
-        if not os.path.exists(result_path):
-            os.makedirs(result_path)
-        logger.info(f"Similarity stat: {stat}")
-        for idx, trials in enumerate(trial):
-            final_result = train_ml_model(
-                ml_type=ml_type,
-                trial_combs=trial,
-                trials=idx,
-                labels=labels,
-                train_valid_idx=train_valid_idx,
-                test_idx=test_idx,
-                dir_name=path_to_files,
-            )
+    dir = EMBEDDINGS / ml_type / stat
+    for models_type in os.listdir(dir):
+        trial_combs = combine_trails(base_path=dir / models_type)
+        for trial_name, trial in trial_combs.items():
+            path_to_files = f"{dir}/{models_type}/{trial_name}"
+            result_path = f"{EMBEDDINGS}/result/{ml_type}/{stat}/{trial_name}"
+            if not os.path.exists(result_path):
+                os.makedirs(result_path)
+            logger.info(f"Similarity stat: {stat}")
+            for idx, trials in enumerate(trial):
+                final_result = train_ml_model(
+                    ml_type=ml_type,
+                    trial_combs=trial,
+                    trials=idx,
+                    labels=labels,
+                    train_valid_idx=train_valid_idx,
+                    test_idx=test_idx,
+                    dir_name=path_to_files,
+                )
 
-            with open(
-                f"{result_path}/{'_'.join(str(i) for i in trials)}_result.txt", "a"
-            ) as file:
-                logger.info(f"Combination {trials}, selected parameters:")
-                for key, res in final_result.items():
-                    logger.info(f"{key}: {res}")
-                    file.write(f"{key}: {res}\n")
-                file.write("\n\n")
-                logger.info("\n\n")
+                with open(
+                    f"{result_path}/{'_'.join(str(i) for i in trials)}_result.txt", "a"
+                ) as file:
+                    logger.info(f"Combination {trials}, selected parameters:")
+                    for key, res in final_result.items():
+                        logger.info(f"{key}: {res}")
+                        file.write(f"{key}: {res}\n")
+                    file.write("\n\n")
+                    logger.info("\n\n")
 
 # end = time.time()
 # logger.info(f"It took {round(end - start, 1)} seconds in total.")
