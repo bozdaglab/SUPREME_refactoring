@@ -51,9 +51,9 @@ class SUPREME(Module):
 
         if self.activ_func == "relu":
             active_func = F.relu
-        if self.activ_func == "sigmoid":
+        elif self.activ_func == "sigmoid":
             active_func = F.sigmoid
-        if self.activ_func == "tanh":
+        elif self.activ_func == "tanh":
             active_func = F.tanh
 
         x = active_func(x_emb)
@@ -205,6 +205,7 @@ class EncoderDecoder:
 
 
 class EncoderInnerProduct:
+    # predict the link between two nodes. Actuallu predict the adjacency matrix
     def __init__(self, encoder: SUPREME):
         self.encoder = encoder
         self.model = GAE(encoder=self.encoder)
@@ -221,26 +222,31 @@ class EncoderInnerProduct:
                 neg_edge_index=data.neg_edge_labels,
             )
         else:
-            loss = self.model.recon_loss(z=emb, pos_edge_index=data.pos_edge_labels)
+            loss = self.model.recon_loss(
+                z=emb, pos_edge_index=data.train_pos_edge_index
+            )
         loss.backward()
         optimizer.step()
         if not isinstance(loss, float):
-            return float(loss)
-        return loss
+            return float(loss), emb
+        return loss, emb
 
     @torch.no_grad()
     def validate(self, data: Data):
+        from sklearn.metrics import average_precision_score, roc_auc_score
+
         self.model.eval()
         emb, _ = self.model.encode(data)
-        pos_y = emb.new_ones(data.pos_edge_labels.size(1))
-        neg_y = emb.new_zeros(data.neg_edge_labels.size(1))
+        pos_y = emb.new_ones(data.test_pos_edge_index.size(1))
+        neg_y = emb.new_zeros(data.test_neg_edge_index.size(1))
         y = torch.cat([pos_y, neg_y], dim=0)
 
-        pos_pred = self.model.decoder(emb, data.pos_edge_labels, sigmoid=True)
-        neg_pred = self.model.decoder(emb, data.neg_edge_labels, sigmoid=True)
+        pos_pred = self.model.decoder(emb, data.test_pos_edge_index, sigmoid=True)
+        neg_pred = self.model.decoder(emb, data.test_neg_edge_index, sigmoid=True)
         pred = torch.cat([pos_pred, neg_pred], dim=0)
         loss = self.criterion(y, pred)
-        return loss, emb
+        y, pred = y.detach().cpu().numpy(), pred.detach().cpu().numpy()
+        return roc_auc_score(y, pred), average_precision_score(y, pred), loss
 
 
 class EncoderEntireInput:

@@ -27,7 +27,9 @@ from selected_models import (
 from set_logging import set_log_config
 from settings import (  # HIDDEN_SIZE,; LEARNING_RATE,
     EMBEDDINGS,
+    HIDDEN_SIZE,
     LEARNING,
+    LEARNING_RATE,
     MAX_EPOCHS,
     MIN_EPOCHS,
     OPTIM,
@@ -163,29 +165,49 @@ def node_embedding_generation(
                     if list_dir and name_ in list_dir:
                         continue
 
-                    tune.run(
-                        partial(
-                            train_steps,
-                            data_generation_types=data_gen_types,
-                            learning_model=learning_model,
-                            edge_index=edge_index,
-                            name=name_dir,
-                            model_choice=model_choice,
-                            super_unsuper_model=unsupervised_model,
-                        ),
-                        resources_per_trial={"cpu": 2, "gpu": 0},
-                        config=config,
-                        num_samples=10,
-                        scheduler=scheduler,
-                    )
-                    # train_steps(
-                    #     data_generation_types=data_gen_types,
-                    # learning_model=learning_model,
-                    # edge_index=edge_index,
-                    # name=name_dir,
-                    # model_choice=model_choice,
-                    # super_unsuper_model=unsupervised_model,
+                    # result = tune.run(
+                    #     partial(
+                    #         train_steps,
+                    #         data_generation_types=data_gen_types,
+                    #         learning_model=learning_model,
+                    #         edge_index=edge_index,
+                    #         name=name_dir,
+                    #         model_choice=model_choice,
+                    #         super_unsuper_model=unsupervised_model,
+                    #     ),
+                    #     resources_per_trial={"cpu": 2, "gpu": 0},
+                    #     config=config,
+                    #     num_samples=10,
+                    #     scheduler=scheduler,
                     # )
+                    # best_trial = result.get_best_trial("loss", "min", "last")
+                    # print(f"Best trial config: {best_trial.config}")
+                    # print(f"Best trial final validation loss: {best_trial.last_result['loss']}")
+                    # print(f"Best trial final validation accuracy: {best_trial.last_result['accuracy']}")
+
+                    # best_trained_model = Net(best_trial.config["l1"], best_trial.config["l2"])
+                    # device = "cpu"
+                    # if torch.cuda.is_available():
+                    #     device = "cuda:0"
+                    #     if gpus_per_trial > 1:
+                    #         best_trained_model = nn.DataParallel(best_trained_model)
+                    # best_trained_model.to(device)
+
+                    # best_checkpoint = best_trial.checkpoint.to_air_checkpoint()
+                    # best_checkpoint_data = best_checkpoint.to_dict()
+
+                    # best_trained_model.load_state_dict(best_checkpoint_data["net_state_dict"])
+
+                    # test_acc = test_accuracy(best_trained_model, device)
+                    # print("Best trial test set accuracy: {}".format(test_acc))
+                    train_steps(
+                        data_generation_types=data_gen_types,
+                        learning_model=learning_model,
+                        edge_index=edge_index,
+                        name=name_dir,
+                        model_choice=model_choice,
+                        super_unsuper_model=unsupervised_model,
+                    )
             else:
                 tune.run(
                     partial(
@@ -245,7 +267,7 @@ def add_row_features(emb: Tensor, is_first: bool = True) -> Tensor:
 
 
 def train_steps(
-    config: Dict,
+    # config: Dict,
     learning_model: Union[GCNUnsupervised, GCNSupervised],
     edge_index: pd.DataFrame,
     name: str,
@@ -262,69 +284,74 @@ def train_steps(
         data_generation_types=data_generation_types, edge_index=edge_index
     )
     best_ValidLoss = np.Inf
-    out_size = learning_model.model_loss_output(model_choice=model_choice)
+    out_size = 32  # learning_model.model_loss_output(model_choice=model_choice)
     in_size = data.x.shape[1]
 
-    # for learning_rate, hid_size in product(LEARNING_RATE, HIDDEN_SIZE):
-    model = select_model(
-        in_size=in_size,
-        hid_size=config["hidden_size"],
-        out_size=out_size,
-        super_unsuper_model=model_choice,
-    )
-    av_valid_losses = []
-    optimizer = select_optimizer(
-        optimizer_type=OPTIM, model=model, learning_rate=config["lr"]
-    )  # add OPTIM to the actual function
-    checkpoint = session.get_checkpoint()
+    for learning_rate, hid_size in product(LEARNING_RATE, HIDDEN_SIZE):
+        # out_size = hid_size
+        model = select_model(
+            in_size=in_size,
+            hid_size=hid_size,
+            out_size=out_size,
+            super_unsuper_model=super_unsuper_model,
+        )
+        av_valid_losses = []
+        optimizer = select_optimizer(
+            optimizer_type=OPTIM, model=model, learning_rate=learning_rate
+        )  # add OPTIM to the actual function
+        # checkpoint = session.get_checkpoint()
 
-    if checkpoint:
-        checkpoint_state = checkpoint.to_dict()
-        # start_epoch = checkpoint_state["epoch"]
-        model.load_state_dict(checkpoint_state["net_state_dict"])
-        optimizer.load_state_dict(checkpoint_state["optimizer_state_dict"])
-    # else:
-    #     start_epoch = 0
-    for x_times in range(X_TIME2):
-        min_valid_loss = np.Inf
-        this_emb = None
-        patience_count = 0
-        for epoch in range(MAX_EPOCHS):
-            logger.info(
-                f"Number of times: {x_times}, model: {model}, optimizer: {optimizer}"
-            )
-            model.train(optimizer, data)
-            this_valid_loss, emb = model.validate(data=data)
-            if this_valid_loss < min_valid_loss:
-                min_valid_loss = this_valid_loss
-                patience_count = 0
-                this_emb = emb
-            else:
-                patience_count += 1
-            if epoch >= MIN_EPOCHS and patience_count >= PATIENCE:
-                break
+        # if checkpoint:
+        #     checkpoint_state = checkpoint.to_dict()
+        #     # start_epoch = checkpoint_state["epoch"]
+        #     model.load_state_dict(checkpoint_state["net_state_dict"])
+        #     optimizer.load_state_dict(checkpoint_state["optimizer_state_dict"])
+        # else:
+        #     start_epoch = 0
+        for x_times in range(X_TIME2):
+            min_valid_loss = np.Inf
+            this_emb = None
+            patience_count = 0
+            model_accuracy = 0
+            for epoch in range(MAX_EPOCHS):
+                loss, emb = model.train(optimizer, data)
+                auc, ap, val_loss = model.validate(data=data)
 
-            checkpoint_data = {
-                "epoch": epoch,
-                "net_state_dict": model.state_dict(),
-                "optimizer_state_dict": optimizer.state_dict(),
-            }
-            checkpoint = Checkpoint.from_dict(checkpoint_data)
+                logger.info(
+                    f"Number of times: {x_times}, epoch: {epoch}",
+                    f"train_loss: {loss}, val_loss: {val_loss}, auc: {auc}, ap: {ap}",
+                )
+                if loss < min_valid_loss and auc > model_accuracy:
+                    model_accuracy = auc
+                    min_valid_loss = loss
+                    patience_count = 0
+                    this_emb = emb
+                else:
+                    patience_count += 1
+                if epoch >= MIN_EPOCHS and patience_count >= PATIENCE:
+                    break
 
-            session.report(
-                {
-                    "loss": min_valid_loss,
-                    "accuracy": min_valid_loss,
-                    "embeddings": this_emb,
-                },
-                checkpoint=checkpoint,
-            )
+            # checkpoint_data = {
+            #     "epoch": epoch,
+            #     "net_state_dict": model.state_dict(),
+            #     "optimizer_state_dict": optimizer.state_dict(),
+            # }
+            # checkpoint = Checkpoint.from_dict(checkpoint_data)
+
+            # session.report(
+            #     {
+            #         "loss": min_valid_loss,
+            #         "accuracy": min_valid_loss,
+            #         "embeddings": this_emb,
+            #     },
+            #     checkpoint=checkpoint,
+            # )
 
         av_valid_losses.append(min_valid_loss.item())
 
-    print("Finished Training")
-    av_valid_loss = round(statistics.median(av_valid_losses), 3)
-    if av_valid_loss < best_ValidLoss:
-        best_ValidLoss = av_valid_loss
-        selected_emb = this_emb
-    pd.DataFrame(selected_emb).to_pickle(f"{name}")
+    # print("Finished Training")
+    # av_valid_loss = round(statistics.median(av_valid_losses), 3)
+    # if av_valid_loss < best_ValidLoss:
+    #     best_ValidLoss = av_valid_loss
+    #     selected_emb = this_emb
+    # pd.DataFrame(selected_emb).to_pickle(f"{name}")

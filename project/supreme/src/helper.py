@@ -1,5 +1,6 @@
 import os
 from collections import Counter, defaultdict
+from itertools import repeat
 from typing import Dict, List, Tuple
 
 import numpy as np
@@ -19,6 +20,8 @@ from settings import CNA, EDGES, METHYLATION_P, METHYLATION_S, MICRO
 from sklearn.feature_selection import RFE, SelectFromModel
 from sklearn.preprocessing import LabelEncoder
 from torch import Tensor
+from torch_geometric.utils import coalesce, remove_self_loops
+from torch_geometric.utils.num_nodes import maybe_num_nodes
 
 DEVICE = torch.device("cpu")
 
@@ -133,7 +136,7 @@ def drop_rows(application_train: pd.DataFrame, gh: List[str]) -> pd.DataFrame:
     return application_train[gh].reset_index(drop=True)
 
 
-@ray.remote(num_cpus=os.cpu_count())
+# @ray.remote(num_cpus=os.cpu_count())
 def similarity_matrix_generation(new_dataset: Dict, stat: str):
     # parqua dataset, parallel
     stat_model = get_stat_methos(stat)
@@ -142,12 +145,14 @@ def similarity_matrix_generation(new_dataset: Dict, stat: str):
         os.makedirs(path_dir)
 
     for file_name, data in new_dataset.items():
-        correlation_dictionary = defaultdict()
+        correlation_dictionary = defaultdict(list)
         if nan_checker(data):
             data = pre_processing(data=data)
         thr = chnage_connections_thr(file_name, stat)
         for ind_i, patient_1 in data.iterrows():
-            for ind_j, patient_2 in data[ind_i + 1 :].iterrows():
+            for ind_j, patient_2 in data.iterrows():
+                if ind_i == ind_j:
+                    continue
                 try:
                     similarity_score = stat_model(
                         patient_1.values, patient_2.values
@@ -155,20 +160,34 @@ def similarity_matrix_generation(new_dataset: Dict, stat: str):
                 except AttributeError:
                     similarity_score = stat_model(patient_1.values, patient_2.values)[0]
                 if similarity_score > thr:
-                    correlation_dictionary[f"{ind_i}_{ind_j}"] = {
-                        "Patient_1": ind_i,
-                        "Patient_2": ind_j,
-                        "link": 1,
-                        "Similarity Score": similarity_score,
-                    }
+                    correlation_dictionary[ind_i].append(ind_j)
 
         # final_correlation[file_name] = correlation_dictionary
 
+        # pd.DataFrame(
+        #     correlation_dictionary.values(),
+        #     columns=list(correlation_dictionary.items())[0][1].keys(),
+        # ).to_pickle(path_dir / f"similarity_{file_name}.pkl")
         pd.DataFrame(
-            correlation_dictionary.values(),
-            columns=list(correlation_dictionary.items())[0][1].keys(),
+            correlation_dictionary.items(), columns=["key", "related"]
         ).to_pickle(path_dir / f"similarity_{file_name}.pkl")
     return None
+
+
+def edge_index_from_dict(graph_dict, num_nodes=None):
+    row, col = [], []
+    for key, value in graph_dict.items():
+        row += repeat(key, len(value))
+        col += value
+    edge_index = torch.stack([torch.tensor(row), torch.tensor(col)], dim=0)
+
+    # NOTE: There are some duplicated edges and self loops in the datasets.
+    #       Other implementations do not remove them!
+    edge_index, _ = remove_self_loops(edge_index)
+    num_nodes = maybe_num_nodes(edge_index)
+    edge_index = coalesce(edge_index, num_nodes=num_nodes)
+
+    return edge_index
 
 
 def load_models1(

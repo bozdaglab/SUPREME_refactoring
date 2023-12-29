@@ -4,7 +4,7 @@ from typing import Optional, Union
 import numpy as np
 import pandas as pd
 import torch
-from helper import masking_indexes, pos_neg, random_split
+from helper import edge_index_from_dict, masking_indexes, pos_neg, random_split
 from learning_types import LearningTypes, OptimizerType, SelectModel, SuperUnsuperModel
 from module import (
     SUPREME,
@@ -85,6 +85,7 @@ class GCNSupervised:
             labels=self.labels,
         )
 
+    # move it into the model class
     def model_loss_output(self, model_choice: str) -> int:
         if model_choice == LearningTypes.regression.name:
             out_size = 1
@@ -122,6 +123,8 @@ class GCNUnsupervised:
 
         # use index to mask inorder to generate the val, test, and train
         # index_to_mask (e.g, index_to_mask(train_index, size=y.size(0)))
+        d = edge_index.set_index(edge_index.columns[0])
+        edge_index = edge_index_from_dict(d.to_dict()["related"])
         data = make_data(new_x=self.new_x, edge_index=edge_index)
         if data_generation_types == SelectModel.node2vec.name:
             node2vec = Node2Vec(
@@ -142,7 +145,11 @@ class GCNUnsupervised:
             data.neg_edge_labels = pos_neg(edge_index, "link", 0)
         elif data_generation_types == SelectModel.train_test.name:
             data.num_nodes = maybe_num_nodes(data.edge_index)
+            edge_index = data.edge_index
+            edge_attr = data.edge_attr
             data = train_test_split_edges(data=data)
+            data.edge_index = edge_index
+            data.edge_attr = edge_attr
         elif data_generation_types == "else":
             data.pos_edge_labels = pos_neg(edge_index, "link", 1)
             data.neg_edge_labels = negative_sampling(
@@ -173,20 +180,16 @@ def make_data(new_x: Tensor, edge_index: pd.DataFrame) -> Data:
     Return:
         A data object
     """
-    data = Data(
-        x=new_x,
-        edge_index=torch.tensor(
-            edge_index[edge_index.columns[0:2]].transpose().values,
-            device=DEVICE,
-        ).long(),
-        edge_attr=torch.tensor(
-            edge_index[edge_index.columns[2]].transpose().values,
-            device=DEVICE,
-        ).float(),
-    )
-    edge_index, _ = remove_self_loops(data.edge_index)
-    data.edge_index = coalesce(edge_index=edge_index, num_nodes=new_x.shape[0])
-    return data
+    return Data(x=new_x, edge_index=edge_index)
+    # edge_index=torch.tensor(
+    #     edge_index[edge_index.columns[0:2]].transpose().values,
+    #     device=DEVICE,
+    # ).long(),
+    # edge_attr=torch.tensor(
+    #     edge_index[edge_index.columns[3]].transpose().values,
+    #     device=DEVICE,
+    # ).float(),
+    # )
 
 
 def train_test_valid(
@@ -233,6 +236,8 @@ def train_test_valid(
                 valid_idx = np.array(train_valid_idx)[valid_part]
             break
 
+    elif "val_pos_edge_index" in data.keys():
+        return data
     else:
         train_idx, valid_idx = train_test_split(train_valid_idx.indices, test_size=0.25)
 
