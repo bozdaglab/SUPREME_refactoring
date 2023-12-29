@@ -1,4 +1,5 @@
 import os
+import pickle
 from collections import Counter, defaultdict
 from itertools import repeat
 from typing import Dict, List, Tuple
@@ -136,9 +137,8 @@ def drop_rows(application_train: pd.DataFrame, gh: List[str]) -> pd.DataFrame:
     return application_train[gh].reset_index(drop=True)
 
 
-# @ray.remote(num_cpus=os.cpu_count())
+@ray.remote(num_cpus=os.cpu_count())
 def similarity_matrix_generation(new_dataset: Dict, stat: str):
-    # parqua dataset, parallel
     stat_model = get_stat_methos(stat)
     path_dir = EDGES / stat
     if not os.path.exists(path_dir):
@@ -168,9 +168,12 @@ def similarity_matrix_generation(new_dataset: Dict, stat: str):
         #     correlation_dictionary.values(),
         #     columns=list(correlation_dictionary.items())[0][1].keys(),
         # ).to_pickle(path_dir / f"similarity_{file_name}.pkl")
-        pd.DataFrame(
-            correlation_dictionary.items(), columns=["key", "related"]
-        ).to_pickle(path_dir / f"similarity_{file_name}.pkl")
+        # d = edge_index.set_index(edge_index.columns[0])
+        edge_index = edge_index_from_dict(correlation_dictionary)
+        with open(path_dir / f"similarity_{file_name}", "wb") as pick_file:
+            pickle.dump(edge_index, pick_file)
+        # pd.DataFrame(
+        #     edge_index).to_pickle(path_dir / f"similarity_{file_name}.pkl")
     return None
 
 

@@ -129,7 +129,7 @@ new_dataset, labels = set_same_users(
     sample_data=sample_data, users=users, labels=labels
 )
 
-# ray.init()
+ray.init()
 
 
 # @ray.remote(num_cpus=os.cpu_count())
@@ -141,9 +141,9 @@ if os.path.exists(EDGES):
     pass
 else:
     similarity_result_ray = [
-        similarity_matrix_generation(new_dataset, stat) for stat in STAT_METHOD
+        similarity_matrix_generation.remote(new_dataset, stat) for stat in STAT_METHOD
     ]
-    # ray.wait(similarity_result_ray)
+    ray.wait(similarity_result_ray)
 
 logger.info("SUPREME is running..")
 path_features = DATA.parent / "selected_features"

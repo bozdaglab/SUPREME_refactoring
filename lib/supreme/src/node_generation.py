@@ -15,7 +15,8 @@ from helper import nan_checker, row_col_ratio
 from learning_types import LearningTypes
 from pre_processings import pre_processing
 from ray import tune
-from ray.air import Checkpoint, session
+
+# from ray.air import Checkpoint, session
 from ray.tune.schedulers import ASHAScheduler
 from selected_models import (
     GCNSupervised,

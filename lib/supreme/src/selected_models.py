@@ -123,8 +123,6 @@ class GCNUnsupervised:
 
         # use index to mask inorder to generate the val, test, and train
         # index_to_mask (e.g, index_to_mask(train_index, size=y.size(0)))
-        d = edge_index.set_index(edge_index.columns[0])
-        edge_index = edge_index_from_dict(d.to_dict()["related"])
         data = make_data(new_x=self.new_x, edge_index=edge_index)
         if data_generation_types == SelectModel.node2vec.name:
             node2vec = Node2Vec(
