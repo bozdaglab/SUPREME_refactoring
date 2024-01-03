@@ -9,9 +9,10 @@ import numpy as np
 import pandas as pd
 import ray
 import torch
+from dataset import process_data
 
 # from feature_selections import select_features
-from helper import nan_checker, row_col_ratio
+from helper import edge_index_from_dict, nan_checker, row_col_ratio
 from learning_types import LearningTypes
 from pre_processings import pre_processing
 from ray import tune
@@ -153,6 +154,8 @@ def node_embedding_generation(
             feature_type = "_".join(feature_type)
         learning_model = load_model(new_x=new_x, labels=labels, model=model_choice)
         for name, edge_index in final_correlation.items():
+            # d = edge_index.set_index(edge_index.columns[0])
+            # edge_index = edge_index_from_dict(d.to_dict()["related"])
             if model_choice == LearningTypes.clustering.name:
                 for data_gen_types, unsupervised_model in product(
                     POS_NEG_MODELS, UNSUPERVISED_MODELS
@@ -284,10 +287,13 @@ def train_steps(
     data = learning_model.prepare_data(
         data_generation_types=data_generation_types, edge_index=edge_index
     )
+    process_data(edge_index=edge_index)
     best_ValidLoss = np.Inf
     out_size = 32  # learning_model.model_loss_output(model_choice=model_choice)
     in_size = data.x.shape[1]
-
+    min_valid_loss = np.Inf
+    this_emb = None
+    model_accuracy = 0
     for learning_rate, hid_size in product(LEARNING_RATE, HIDDEN_SIZE):
         # out_size = hid_size
         model = select_model(
@@ -310,17 +316,13 @@ def train_steps(
         # else:
         #     start_epoch = 0
         for x_times in range(X_TIME2):
-            min_valid_loss = np.Inf
-            this_emb = None
             patience_count = 0
-            model_accuracy = 0
             for epoch in range(MAX_EPOCHS):
                 loss, emb = model.train(optimizer, data)
                 auc, ap, val_loss = model.validate(data=data)
 
                 logger.info(
-                    f"Number of times: {x_times}, epoch: {epoch}",
-                    f"train_loss: {loss}, val_loss: {val_loss}, auc: {auc}, ap: {ap}",
+                    f"Number of times: {x_times}, epoch: {epoch}, train_loss: {loss}, auc: {auc}, ap: {ap}",
                 )
                 if loss < min_valid_loss and auc > model_accuracy:
                     model_accuracy = auc
@@ -348,7 +350,7 @@ def train_steps(
             #     checkpoint=checkpoint,
             # )
 
-        av_valid_losses.append(min_valid_loss.item())
+        av_valid_losses.append(min_valid_loss)
 
     # print("Finished Training")
     # av_valid_loss = round(statistics.median(av_valid_losses), 3)

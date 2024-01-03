@@ -9,7 +9,7 @@ from learning_types import LearningTypes
 from set_logging import set_log_config
 from torch.nn import Linear, Module
 from torch_geometric.data import Data
-from torch_geometric.nn import ARGVA, GAE, GCNConv
+from torch_geometric.nn import ARGVA, GCNConv  # GAE, GCNConv
 
 # from torch_geometric.nn.models.autoencoder import InnerProductDecoder
 set_log_config()
@@ -135,6 +135,8 @@ class SupremeClusteringLink:
         loss = self.criterion_link(link_pred, data.edge_attr)
         loss.backward()
         optimizer.step()
+        if not isinstance(loss, float):
+            return float(loss), emb
         return loss
 
     @torch.no_grad()
@@ -204,49 +206,55 @@ class EncoderDecoder:
         return criterion(y, pred), emb
 
 
-class EncoderInnerProduct:
-    # predict the link between two nodes. Actuallu predict the adjacency matrix
-    def __init__(self, encoder: SUPREME):
-        self.encoder = encoder
-        self.model = GAE(encoder=self.encoder)
-        self.criterion = torch.nn.BCEWithLogitsLoss()
+# class EncoderInnerProduct:
+#     # predict the link between two nodes. Actuallu predict the adjacency matrix
+#     def __init__(self, encoder: SUPREME):
+#         self.encoder = encoder
+#         self.model = GAE(encoder=self.encoder)
+#         self.criterion = torch.nn.BCEWithLogitsLoss()
 
-    def train(self, optimizer: torch.optim, data: Data):
-        self.model.train()
-        optimizer.zero_grad()
-        emb, _ = self.model.encode(data)
-        if "neg_edge_labels" in data.keys():
-            loss = self.model.recon_loss(
-                z=emb,
-                pos_edge_index=data.pos_edge_labels,
-                neg_edge_index=data.neg_edge_labels,
-            )
-        else:
-            loss = self.model.recon_loss(
-                z=emb, pos_edge_index=data.train_pos_edge_index
-            )
-        loss.backward()
-        optimizer.step()
-        if not isinstance(loss, float):
-            return float(loss), emb
-        return loss, emb
+#     def train(self, optimizer: torch.optim, data: Data):
+#         self.model.train()
+#         optimizer.zero_grad()
+#         emb, _ = self.model.encode(data)
+#         if "neg_edge_labels" in data.keys():
+#             loss = self.model.recon_loss(
+#                 z=emb,
+#                 pos_edge_index=data.pos_edge_labels,
+#                 neg_edge_index=data.neg_edge_labels,
+#             )
+#         else:
+#             loss = self.model.recon_loss(
+#                 z=emb, pos_edge_index=data.train_pos_edge_index
+#             )
+#         loss.backward()
+#         optimizer.step()
+#         if not isinstance(loss, float):
+#             return float(loss), emb
+#         return loss, emb
 
-    @torch.no_grad()
-    def validate(self, data: Data):
-        from sklearn.metrics import average_precision_score, roc_auc_score
+#     @torch.no_grad()
+#     def validate(self, data: Data):
+#         from sklearn.metrics import average_precision_score, roc_auc_score
 
-        self.model.eval()
-        emb, _ = self.model.encode(data)
-        pos_y = emb.new_ones(data.test_pos_edge_index.size(1))
-        neg_y = emb.new_zeros(data.test_neg_edge_index.size(1))
-        y = torch.cat([pos_y, neg_y], dim=0)
+#         self.model.eval()
+#         emb, _ = self.model.encode(data)
+#         if "neg_edge_labels" in data.keys():
+#             pos_data = data.pos_edge_labels
+#             neg_data = data.neg_edge_labels
+#         else:
+#             pos_data = data.test_pos_edge_index
+#             neg_data = data.test_neg_edge_index
+#         pos_y = emb.new_ones(pos_data.size(1))
+#         neg_y = emb.new_zeros(neg_data.size(1))
+#         y = torch.cat([pos_y, neg_y], dim=0)
 
-        pos_pred = self.model.decoder(emb, data.test_pos_edge_index, sigmoid=True)
-        neg_pred = self.model.decoder(emb, data.test_neg_edge_index, sigmoid=True)
-        pred = torch.cat([pos_pred, neg_pred], dim=0)
-        loss = self.criterion(y, pred)
-        y, pred = y.detach().cpu().numpy(), pred.detach().cpu().numpy()
-        return roc_auc_score(y, pred), average_precision_score(y, pred), loss
+#         pos_pred = self.model.decoder(emb, pos_data, sigmoid=True)
+#         neg_pred = self.model.decoder(emb, neg_data, sigmoid=True)
+#         pred = torch.cat([pos_pred, neg_pred], dim=0)
+#         loss = self.criterion(y, pred)
+#         y, pred = y.detach().cpu().numpy(), pred.detach().cpu().numpy()
+#         return roc_auc_score(y, pred), average_precision_score(y, pred), loss
 
 
 class EncoderEntireInput:

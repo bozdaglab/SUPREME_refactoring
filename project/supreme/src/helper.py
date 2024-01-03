@@ -1,12 +1,9 @@
-import os
-import pickle
-from collections import Counter, defaultdict
+from collections import Counter
 from itertools import repeat
 from typing import Dict, List, Tuple
 
 import numpy as np
 import pandas as pd
-import ray
 import torch
 import xgboost as xgb
 from boruta import BorutaPy
@@ -15,11 +12,9 @@ from learning_types import FeatureSelectionType
 
 # from genetic_selection import GeneticSelectionCV
 from mlxtend.feature_selection import SequentialFeatureSelector
-from pre_processings import pre_processing
 from scipy.stats import pearsonr, spearmanr
-from settings import CNA, EDGES, METHYLATION_P, METHYLATION_S, MICRO
+from settings import CNA, METHYLATION_P, METHYLATION_S, MICRO
 from sklearn.feature_selection import RFE, SelectFromModel
-from sklearn.preprocessing import LabelEncoder
 from torch import Tensor
 from torch_geometric.utils import coalesce, remove_self_loops
 from torch_geometric.utils.num_nodes import maybe_num_nodes
@@ -121,60 +116,8 @@ def get_stat_methos(stat_method: str):
         raise KeyError("Please check your stat model")
 
 
-def set_same_users(sample_data: Dict, users: Dict, labels: Dict) -> Dict:
-    new_dataset = defaultdict()
-    shared_users = search_dictionary(users, len(users) - 1)
-    shared_users = sorted(shared_users)[0:100]
-    shared_users_encoded = LabelEncoder().fit_transform(shared_users)
-    for file_name, data in sample_data.items():
-        new_dataset[file_name] = data[data.index.isin(shared_users)].set_index(
-            shared_users_encoded
-        )
-    return new_dataset, labels[shared_users].reset_index(drop=True)
-
-
 def drop_rows(application_train: pd.DataFrame, gh: List[str]) -> pd.DataFrame:
     return application_train[gh].reset_index(drop=True)
-
-
-@ray.remote(num_cpus=os.cpu_count())
-def similarity_matrix_generation(new_dataset: Dict, stat: str):
-    stat_model = get_stat_methos(stat)
-    path_dir = EDGES / stat
-    if not os.path.exists(path_dir):
-        os.makedirs(path_dir)
-
-    for file_name, data in new_dataset.items():
-        correlation_dictionary = defaultdict(list)
-        if nan_checker(data):
-            data = pre_processing(data=data)
-        thr = chnage_connections_thr(file_name, stat)
-        for ind_i, patient_1 in data.iterrows():
-            for ind_j, patient_2 in data.iterrows():
-                if ind_i == ind_j:
-                    continue
-                try:
-                    similarity_score = stat_model(
-                        patient_1.values, patient_2.values
-                    ).statistic
-                except AttributeError:
-                    similarity_score = stat_model(patient_1.values, patient_2.values)[0]
-                if similarity_score > thr:
-                    correlation_dictionary[ind_i].append(ind_j)
-
-        # final_correlation[file_name] = correlation_dictionary
-
-        # pd.DataFrame(
-        #     correlation_dictionary.values(),
-        #     columns=list(correlation_dictionary.items())[0][1].keys(),
-        # ).to_pickle(path_dir / f"similarity_{file_name}.pkl")
-        # d = edge_index.set_index(edge_index.columns[0])
-        edge_index = edge_index_from_dict(correlation_dictionary)
-        with open(path_dir / f"similarity_{file_name}", "wb") as pick_file:
-            pickle.dump(edge_index, pick_file)
-        # pd.DataFrame(
-        #     edge_index).to_pickle(path_dir / f"similarity_{file_name}.pkl")
-    return None
 
 
 def edge_index_from_dict(graph_dict, num_nodes=None):

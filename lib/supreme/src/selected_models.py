@@ -4,15 +4,14 @@ from typing import Optional, Union
 import numpy as np
 import pandas as pd
 import torch
-from helper import edge_index_from_dict, masking_indexes, pos_neg, random_split
+from helper import masking_indexes, pos_neg, random_split
 from learning_types import LearningTypes, OptimizerType, SelectModel, SuperUnsuperModel
-from module import (
+from module import (  # EncoderInnerProduct,
     SUPREME,
     Discriminator,
     Encoder,
     EncoderDecoder,
     EncoderEntireInput,
-    EncoderInnerProduct,
     SupremeClassification,
     SupremeClusteringLink,
 )
@@ -20,6 +19,7 @@ from settings import (  # WALK_LENGHT,; WALK_PER_NODE,
     CONTEXT_SIZE,
     EMBEDDING_DIM,
     SPARSE,
+    WALK_LENGHT,
     P,
     Q,
 )
@@ -128,7 +128,7 @@ class GCNUnsupervised:
             node2vec = Node2Vec(
                 edge_index=data.edge_index,
                 embedding_dim=EMBEDDING_DIM,
-                walk_length=round(edge_index.shape[0] * 0.002),
+                walk_length=WALK_LENGHT,
                 context_size=CONTEXT_SIZE,
                 walks_per_node=6,
                 p=P,
@@ -138,9 +138,9 @@ class GCNUnsupervised:
             pos, neg = node2vec.sample([10, 15])  # batch size
             data.pos_edge_labels = torch.tensor(pos.T, device=DEVICE).long()
             data.neg_edge_labels = torch.tensor(neg.T, device=DEVICE).long()
-        elif data_generation_types == SelectModel.similarity_based.name:
-            data.pos_edge_labels = pos_neg(edge_index, "link", 1)
-            data.neg_edge_labels = pos_neg(edge_index, "link", 0)
+        # elif data_generation_types == SelectModel.similarity_based.name:
+        #     data.pos_edge_labels = pos_neg(edge_index, "link", 1)
+        #     data.neg_edge_labels = pos_neg(edge_index, "link", 0)
         elif data_generation_types == SelectModel.train_test.name:
             data.num_nodes = maybe_num_nodes(data.edge_index)
             edge_index = data.edge_index
@@ -148,7 +148,7 @@ class GCNUnsupervised:
             data = train_test_split_edges(data=data)
             data.edge_index = edge_index
             data.edge_attr = edge_attr
-        elif data_generation_types == "else":
+        elif data_generation_types == SelectModel.similarity_based.name:
             data.pos_edge_labels = pos_neg(edge_index, "link", 1)
             data.neg_edge_labels = negative_sampling(
                 data.pos_edge_labels, self.new_x.size(0)
@@ -178,16 +178,21 @@ def make_data(new_x: Tensor, edge_index: pd.DataFrame) -> Data:
     Return:
         A data object
     """
-    return Data(x=new_x, edge_index=edge_index)
-    # edge_index=torch.tensor(
-    #     edge_index[edge_index.columns[0:2]].transpose().values,
-    #     device=DEVICE,
-    # ).long(),
-    # edge_attr=torch.tensor(
-    #     edge_index[edge_index.columns[3]].transpose().values,
-    #     device=DEVICE,
-    # ).float(),
-    # )
+    # return Data(x=new_x, edge_index=edge_index)
+    data = Data(
+        x=new_x,
+        edge_index=torch.tensor(
+            edge_index[edge_index.columns[0:2]].transpose().values,
+            device=DEVICE,
+        ).long(),
+        edge_attr=torch.tensor(
+            edge_index[edge_index.columns[3]].transpose().values,
+            device=DEVICE,
+        ).float(),
+    )
+    edge_index, _ = remove_self_loops(data.edge_index)
+    data.edge_index = coalesce(edge_index=edge_index, num_nodes=new_x.shape[0])
+    return data
 
 
 def train_test_valid(
@@ -300,8 +305,8 @@ def select_optimizer(
             model.discriminator.parameters(), lr=learning_rate
         )
         return losses(encoder_loss=encoder_loss, decoder_loss=decoder_loss)
-    elif isinstance(model, EncoderInnerProduct):
-        return torch.optim.Adam(model.encoder.parameters(), lr=learning_rate)
+    # elif isinstance(model, EncoderInnerProduct):
+    #     return torch.optim.Adam(model.encoder.parameters(), lr=learning_rate)
 
     elif isinstance(model, EncoderEntireInput):
         losses = namedtuple("losses", ["encoder_loss", "decoder_loss"])
@@ -328,7 +333,7 @@ def select_model(
     SupremeClassification,
     SupremeClusteringLink,
     EncoderDecoder,
-    EncoderInnerProduct,
+    # EncoderInnerProduct,
     EncoderEntireInput,
 ]:
     """
@@ -365,9 +370,9 @@ def select_model(
         elif super_unsuper_model == SuperUnsuperModel.linkprediction.name:
             model = SUPREME(in_size=in_size, hid_size=hid_size, out_size=out_size)
             return SupremeClusteringLink(model=model)
-        elif super_unsuper_model == SuperUnsuperModel.encoderinproduct.name:
-            encoder = SUPREME(in_size=in_size, hid_size=hid_size, out_size=out_size)
-            return EncoderInnerProduct(encoder=encoder)
+        # elif super_unsuper_model == SuperUnsuperModel.encoderinproduct.name:
+        #     encoder = SUPREME(in_size=in_size, hid_size=hid_size, out_size=out_size)
+        #     return EncoderInnerProduct(encoder=encoder)
         else:
             encoder = SUPREME(in_size=in_size, hid_size=hid_size, out_size=out_size)
             decoder = Discriminator(

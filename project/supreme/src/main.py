@@ -1,6 +1,5 @@
 import logging
 import os
-import pickle
 import sys
 import time
 import warnings
@@ -11,8 +10,9 @@ from typing import List
 import pandas as pd
 import ray
 import torch
+from dataset import set_same_users, similarity_matrix_generation, txt_to_pickle
 from dotenv import find_dotenv, load_dotenv
-from helper import random_split, set_same_users, similarity_matrix_generation
+from helper import random_split
 from node_generation import node_embedding_generation, node_feature_generation
 from set_logging import set_log_config
 from settings import (
@@ -20,12 +20,10 @@ from settings import (
     DATA,
     EDGES,
     EMBEDDINGS,
-    LABELS,
     LEARNING,
     SELECTION_METHOD,
     STAT_METHOD,
 )
-from sklearn.preprocessing import LabelEncoder
 from train_mls import train_ml_model
 
 load_dotenv(find_dotenv())
@@ -55,73 +53,6 @@ def combine_trails(base_path: str) -> List[List[int]]:
     # return [combinations(NODE_NETWORKS, i) for i in range(1, len(NODE_NETWORKS)+1)]
 
 
-def txt_to_pickle():
-    """
-    Search in the given repository, and load pickle/txt files, and generate
-    labels, and input data
-    """
-    encoder = LabelEncoder()
-    sample_data = defaultdict()
-    labels = ""
-    users = defaultdict()
-    list_files = os.listdir(BASE_DATAPATH)
-    if all(file_name in os.listdir(BASE_DATAPATH) for file_name in ["data", "labels"]):
-        for file in os.listdir(DATA):
-            data = pd.read_pickle(f"{DATA}/{file}")
-            sample_data[file] = data
-            if "PATIENT_ID" in data.columns:
-                patient_id = data["PATIENT_ID"]
-            else:
-                patient_id = data.index
-            users[file.split(".")[0]] = patient_id
-        for file in os.listdir(LABELS):
-            labels = pd.read_pickle(f"{LABELS}/{file}")
-        return sample_data, users, labels
-
-    for file in list_files:
-        if file.endswith(".pkl"):
-            with open(f"{BASE_DATAPATH}/{file}", "rb") as pkl_file:
-                data = pickle.load(pkl_file)
-        if file.endswith(".txt"):
-            with open(f"{BASE_DATAPATH}/{file}", "rb") as txt_file:
-                data = pd.read_csv(txt_file, sep="\t")
-        else:
-            continue
-        if "data_cna" in file or "data_mrna" in file:
-            data.drop("Entrez_Gene_Id", axis=1, inplace=True)
-        if "edges_" in file:
-            to_save_folder = EDGES
-        elif "labels." in file:
-            to_save_folder = LABELS
-        else:
-            to_save_folder = DATA
-        if not os.path.exists(to_save_folder):
-            os.mkdir(to_save_folder)
-        if "data_clinical_patient" in file:
-            patient_id = data["PATIENT_ID"]
-            data.drop("PATIENT_ID", axis=1, inplace=True)
-            if not os.path.exists(LABELS):
-                os.mkdir(LABELS)
-
-            data = data.apply(encoder.fit_transform)
-            data["PATIENT_ID"] = patient_id
-            data = data.set_index("PATIENT_ID")
-            data["CLAUDIN_SUBTYPE"].to_pickle(f"{LABELS}/labels.pkl")
-            labels = data["CLAUDIN_SUBTYPE"]
-        else:
-            hugo_symbol = data["Hugo_Symbol"]
-            data.drop("Hugo_Symbol", axis=1, inplace=True)
-            data = data.T
-            data.columns = hugo_symbol.values
-            patient_id = data.index
-        file_name = file.split(".")[0]
-        users[file_name] = patient_id
-        sample_data[file_name] = data
-        data.to_pickle(f"{to_save_folder}/{file_name}.pkl")
-    return sample_data, users, labels
-
-
-# do preprocessing here
 sample_data, users, labels = txt_to_pickle()
 
 
@@ -130,12 +61,6 @@ new_dataset, labels = set_same_users(
 )
 
 ray.init()
-
-
-# @ray.remote(num_cpus=os.cpu_count())
-# def compute_similarity(new_dataset: Dict, stat: str):
-#     similarity_matrix_generation.remote(new_dataset=new_dataset, stat=stat)
-
 
 if os.path.exists(EDGES):
     pass
@@ -165,23 +90,23 @@ else:
 
     ray.wait(embeddings_result_ray)
 
-if not os.path.exists(EMBEDDINGS):
-    for stat in os.listdir(EDGES):
-        final_correlation = defaultdict()
-        for file in os.listdir(EDGES / stat):
-            final_correlation[file] = pd.read_pickle(EDGES / stat / file)
-        for idx, feature_type in enumerate(os.listdir(path_embeggings)):
-            new_x = pd.read_pickle(path_embeggings / feature_type)
-            if isinstance(new_x, pd.DataFrame):
-                new_x = torch.tensor(new_x.values, dtype=torch.float32)
-            train_valid_idx, test_idx = random_split(new_x)
-            node_embedding_generation(
-                stat=stat,
-                new_x=new_x,
-                labels=labels,
-                final_correlation=final_correlation,
-                feature_type=feature_type,
-            )
+# if not os.path.exists(EMBEDDINGS):
+for stat in os.listdir(EDGES):
+    final_correlation = defaultdict()
+    for file in os.listdir(EDGES / stat):
+        final_correlation[file] = pd.read_pickle(EDGES / stat / file)
+    for idx, feature_type in enumerate(os.listdir(path_embeggings)):
+        new_x = pd.read_pickle(path_embeggings / feature_type)
+        if isinstance(new_x, pd.DataFrame):
+            new_x = torch.tensor(new_x.values, dtype=torch.float32)
+        train_valid_idx, test_idx = random_split(new_x)
+        node_embedding_generation(
+            stat=stat,
+            new_x=new_x,
+            labels=labels,
+            final_correlation=final_correlation,
+            feature_type=feature_type,
+        )
     # else:
     #     new_x = node_feature_generation(new_dataset=new_dataset, labels=labels)
     #     train_valid_idx, test_idx = random_split(new_x)
