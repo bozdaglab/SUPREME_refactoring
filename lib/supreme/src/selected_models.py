@@ -4,6 +4,7 @@ from typing import Optional, Union
 import numpy as np
 import pandas as pd
 import torch
+from dataset import process_data
 from helper import masking_indexes, pos_neg, random_split
 from learning_types import LearningTypes, OptimizerType, SelectModel, SuperUnsuperModel
 from module import (  # EncoderInnerProduct,
@@ -120,7 +121,7 @@ class GCNUnsupervised:
         train_valid_idx, test_idx = random_split(new_x=self.new_x)
         if isinstance(edge_index, dict):
             edge_index = pd.DataFrame(edge_index).T
-
+        # edge_index = process_data(edge_index=edge_index)
         # use index to mask inorder to generate the val, test, and train
         # index_to_mask (e.g, index_to_mask(train_index, size=y.size(0)))
         data = make_data(new_x=self.new_x, edge_index=edge_index)

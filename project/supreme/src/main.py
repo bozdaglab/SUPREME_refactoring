@@ -60,15 +60,15 @@ new_dataset, labels = set_same_users(
     sample_data=sample_data, users=users, labels=labels
 )
 
-ray.init()
+# ray.init()
 
 if os.path.exists(EDGES):
     pass
 else:
     similarity_result_ray = [
-        similarity_matrix_generation.remote(new_dataset, stat) for stat in STAT_METHOD
+        similarity_matrix_generation(new_dataset, stat) for stat in STAT_METHOD
     ]
-    ray.wait(similarity_result_ray)
+    # ray.wait(similarity_result_ray)
 
 logger.info("SUPREME is running..")
 path_features = DATA.parent / "selected_features"
@@ -78,7 +78,7 @@ if os.path.exists(path_embeggings):
     pass
 else:
     embeddings_result_ray = [
-        node_feature_generation.remote(
+        node_feature_generation(
             new_dataset=new_dataset,
             labels=labels,
             feature_type=feature_type,
@@ -88,7 +88,7 @@ else:
         for feature_type in SELECTION_METHOD
     ]
 
-    ray.wait(embeddings_result_ray)
+    # ray.wait(embeddings_result_ray)
 
 # if not os.path.exists(EMBEDDINGS):
 for stat in os.listdir(EDGES):

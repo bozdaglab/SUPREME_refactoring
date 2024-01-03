@@ -62,7 +62,7 @@ scheduler = ASHAScheduler(
 )
 
 
-@ray.remote(num_cpus=os.cpu_count())
+# @ray.remote(num_cpus=os.cpu_count())
 def node_feature_generation(
     new_dataset: Dict,
     labels: Dict,
@@ -287,7 +287,6 @@ def train_steps(
     data = learning_model.prepare_data(
         data_generation_types=data_generation_types, edge_index=edge_index
     )
-    process_data(edge_index=edge_index)
     best_ValidLoss = np.Inf
     out_size = 32  # learning_model.model_loss_output(model_choice=model_choice)
     in_size = data.x.shape[1]

@@ -2,6 +2,7 @@
 
 import logging
 
+import numpy as np
 import torch
 import torch.nn.functional as F
 from dotenv import find_dotenv, load_dotenv
@@ -123,16 +124,34 @@ class SupremeClusteringLink:
     def __init__(self, model: SUPREME) -> None:
         self.model = model
         self.criterion_link = torch.nn.BCEWithLogitsLoss()
+        self.Q = 10  # defines the number of negative samples
 
     def train(self, optimizer: torch.optim, data: Data):
         # GraphSAGE predict adjacency matrix https://arxiv.org/abs/1706.02216
         self.model.train()
         optimizer.zero_grad()
         emb, _ = self.model(data)
-        h_src = emb[data.edge_index[0]]
-        h_dst = emb[data.edge_index[1]]
-        link_pred = (h_src * h_dst).sum(dim=-1)
-        loss = self.criterion_link(link_pred, data.edge_attr)
+        src_pos = data.pos_edge_labels[0]
+        src_neg = data.neg_edge_labels[0]
+        node_score = []
+        for pos_node in src_pos:
+            list_pos_node = np.where(src_pos == pos_node)
+            pos_score = F.cosine_similarity(
+                emb[data.pos_edge_labels[0][list_pos_node]],
+                emb[data.pos_edge_labels[1][list_pos_node]],
+            )
+            link_pred_pos = torch.log(torch.sigmoid(pos_score))
+
+            list_neg_node = np.where(src_neg == pos_node)
+            neg_score = F.cosine_similarity(
+                emb[data.neg_edge_labels[0][list_neg_node]],
+                emb[data.neg_edge_labels[1][list_neg_node]],
+            )
+            link_pred_neg = self.Q * torch.mean(torch.log(torch.sigmoid(-neg_score)))
+            loss = torch.mean(-link_pred_pos - link_pred_neg).view(1, -1)
+            if loss:
+                node_score.append(loss)
+        loss = torch.mean(torch.cat(node_score, 0))
         loss.backward()
         optimizer.step()
         if not isinstance(loss, float):
@@ -147,7 +166,28 @@ class SupremeClusteringLink:
         h_dst = emb[data.edge_index[1]]
         link_pred = (h_src * h_dst).sum(dim=-1)
         loss = self.criterion_link(link_pred, data.edge_attr)
-        return loss, emb
+        # return loss, emb
+
+        from sklearn.metrics import average_precision_score, roc_auc_score
+
+        self.model.eval()
+        emb, _ = self.model.encode(data)
+        if "neg_edge_labels" in data.keys():
+            pos_data = data.pos_edge_labels
+            neg_data = data.neg_edge_labels
+        else:
+            pos_data = data.test_pos_edge_index
+            neg_data = data.test_neg_edge_index
+        pos_y = emb.new_ones(pos_data.size(1))
+        neg_y = emb.new_zeros(neg_data.size(1))
+        y = torch.cat([pos_y, neg_y], dim=0)
+
+        pos_pred = self.model.decoder(emb, pos_data, sigmoid=True)
+        neg_pred = self.model.decoder(emb, neg_data, sigmoid=True)
+        pred = torch.cat([pos_pred, neg_pred], dim=0)
+        loss = self.criterion(y, pred)
+        y, pred = y.detach().cpu().numpy(), pred.detach().cpu().numpy()
+        return roc_auc_score(y, pred), average_precision_score(y, pred), loss
 
 
 class EncoderDecoder:
