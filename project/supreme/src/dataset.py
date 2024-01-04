@@ -204,3 +204,9 @@ def process_data(edge_index: Dict):
     edge_index = torch.tensor(list(graph.edges)).t().contiguous()
     edge_index, _ = remove_self_loops(edge_index)
     return edge_index
+
+
+"""
+Add NeighborLoader here to create batches with neighbor sampling
+similar to what we see here https://mlabonne.github.io/blog/posts/2022-04-06-GraphSAGE.html
+"""

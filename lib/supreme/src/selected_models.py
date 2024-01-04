@@ -7,14 +7,13 @@ import torch
 from dataset import process_data
 from helper import masking_indexes, pos_neg, random_split
 from learning_types import LearningTypes, OptimizerType, SelectModel, SuperUnsuperModel
-from module import (  # EncoderInnerProduct,
+from module import (  # EncoderInnerProduct,; SupremeClusteringLink,
     SUPREME,
     Discriminator,
     Encoder,
     EncoderDecoder,
     EncoderEntireInput,
     SupremeClassification,
-    SupremeClusteringLink,
 )
 from settings import (  # WALK_LENGHT,; WALK_PER_NODE,
     CONTEXT_SIZE,
@@ -332,7 +331,7 @@ def select_model(
     super_unsuper_model: str, in_size: int, hid_size: int, out_size: int
 ) -> Union[
     SupremeClassification,
-    SupremeClusteringLink,
+    # SupremeClusteringLink,
     EncoderDecoder,
     # EncoderInnerProduct,
     EncoderEntireInput,
@@ -368,9 +367,9 @@ def select_model(
                 in_size=in_size, hid_size=hid_size, out_size=out_size
             )
             return EncoderDecoder(encoder=encoder, discriminator=discriminator)
-        elif super_unsuper_model == SuperUnsuperModel.linkprediction.name:
-            model = SUPREME(in_size=in_size, hid_size=hid_size, out_size=out_size)
-            return SupremeClusteringLink(model=model)
+        # elif super_unsuper_model == SuperUnsuperModel.linkprediction.name:
+        #     model = SUPREME(in_size=in_size, hid_size=hid_size, out_size=out_size)
+        #     return SupremeClusteringLink(model=model)
         # elif super_unsuper_model == SuperUnsuperModel.encoderinproduct.name:
         #     encoder = SUPREME(in_size=in_size, hid_size=hid_size, out_size=out_size)
         #     return EncoderInnerProduct(encoder=encoder)
