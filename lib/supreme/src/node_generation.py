@@ -13,7 +13,7 @@ from dataset import process_data
 
 # from feature_selections import select_features
 from helper import edge_index_from_dict, nan_checker, row_col_ratio
-from learning_types import LearningTypes
+from learning_types import LearningTypes, SuperUnsuperModel
 from pre_processings import pre_processing
 from ray import tune
 
@@ -293,6 +293,12 @@ def train_steps(
     min_valid_loss = np.Inf
     this_emb = None
     model_accuracy = 0
+    if super_unsuper_model == SuperUnsuperModel.entireinput.name:
+        metric_1 = "r2_square"
+        metric_2 = "mean_square_error"
+    else:
+        metric_1 = "auc"
+        metric_2 = "ap" 
     for learning_rate, hid_size in product(LEARNING_RATE, HIDDEN_SIZE):
         # out_size = hid_size
         model = select_model(
@@ -321,7 +327,7 @@ def train_steps(
                 auc, ap, val_loss = model.validate(data=data)
 
                 logger.info(
-                    f"Number of times: {x_times}, epoch: {epoch}, train_loss: {loss}, auc: {auc}, ap: {ap}",
+                    f"Number of times: {x_times}, epoch: {epoch}, train_loss: {loss}, {metric_1}: {auc}, {metric_2}: {ap}",
                 )
                 if loss < min_valid_loss and auc > model_accuracy:
                     model_accuracy = auc

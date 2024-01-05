@@ -1,7 +1,6 @@
 import logging
 import os
 import sys
-import time
 import warnings
 from collections import defaultdict
 from itertools import combinations, product
@@ -60,15 +59,15 @@ new_dataset, labels = set_same_users(
     sample_data=sample_data, users=users, labels=labels
 )
 
-# ray.init()
+ray.init()
 
 if os.path.exists(EDGES):
     pass
 else:
     similarity_result_ray = [
-        similarity_matrix_generation(new_dataset, stat) for stat in STAT_METHOD
+        similarity_matrix_generation.remote(new_dataset, stat) for stat in STAT_METHOD
     ]
-    # ray.wait(similarity_result_ray)
+    ray.wait(similarity_result_ray)
 
 logger.info("SUPREME is running..")
 path_features = DATA.parent / "selected_features"
@@ -78,7 +77,7 @@ if os.path.exists(path_embeggings):
     pass
 else:
     embeddings_result_ray = [
-        node_feature_generation(
+        node_feature_generation.remote(
             new_dataset=new_dataset,
             labels=labels,
             feature_type=feature_type,
@@ -88,37 +87,26 @@ else:
         for feature_type in SELECTION_METHOD
     ]
 
-    # ray.wait(embeddings_result_ray)
+    ray.wait(embeddings_result_ray)
 
-# if not os.path.exists(EMBEDDINGS):
-for stat in os.listdir(EDGES):
-    final_correlation = defaultdict()
-    for file in os.listdir(EDGES / stat):
-        final_correlation[file] = pd.read_pickle(EDGES / stat / file)
-    for idx, feature_type in enumerate(os.listdir(path_embeggings)):
-        new_x = pd.read_pickle(path_embeggings / feature_type)
-        if isinstance(new_x, pd.DataFrame):
-            new_x = torch.tensor(new_x.values, dtype=torch.float32)
-        train_valid_idx, test_idx = random_split(new_x)
-        node_embedding_generation(
-            stat=stat,
-            new_x=new_x,
-            labels=labels,
-            final_correlation=final_correlation,
-            feature_type=feature_type,
-        )
-    # else:
-    #     new_x = node_feature_generation(new_dataset=new_dataset, labels=labels)
-    #     train_valid_idx, test_idx = random_split(new_x)
-    #     node_embedding_generation(
-    #         new_x=new_x, labels=labels, final_correlation=final_correlation
-    #     )
+if not os.path.exists(EMBEDDINGS):
+    for stat in os.listdir(EDGES):
+        final_correlation = defaultdict()
+        for file in os.listdir(EDGES / stat):
+            final_correlation[file] = pd.read_pickle(EDGES / stat / file)
+        for idx, feature_type in enumerate(os.listdir(path_embeggings)):
+            new_x = pd.read_pickle(path_embeggings / feature_type)
+            if isinstance(new_x, pd.DataFrame):
+                new_x = torch.tensor(new_x.values, dtype=torch.float32)
+            train_valid_idx, test_idx = random_split(new_x)
+            node_embedding_generation(
+                stat=stat,
+                new_x=new_x,
+                labels=labels,
+                final_correlation=final_correlation,
+                feature_type=feature_type,
+            )
 
-start2 = time.time()
-
-# logger.info(
-#     f"It took {str(round(start2 - start, 1))} seconds for node embedding generation"
-# )
 logger.info("SUPREME is integrating the embeddings..")
 for ml_type, stat in product(LEARNING, STAT_METHOD):
     dir = EMBEDDINGS / ml_type / stat
@@ -150,7 +138,3 @@ for ml_type, stat in product(LEARNING, STAT_METHOD):
                         file.write(f"{key}: {res}\n")
                     file.write("\n\n")
                     logger.info("\n\n")
-
-# end = time.time()
-# logger.info(f"It took {round(end - start, 1)} seconds in total.")
-# logger.info("SUPREME is done.")

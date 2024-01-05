@@ -11,7 +11,7 @@ from module import (  # EncoderInnerProduct,; SupremeClusteringLink,
     SUPREME,
     Discriminator,
     Encoder,
-    EncoderDecoder,
+    # EncoderDecoder,
     EncoderEntireInput,
     SupremeClassification,
 )
@@ -298,17 +298,17 @@ def select_optimizer(
     Return:
         Torch optimizer
     """
-    if isinstance(model, EncoderDecoder):
-        losses = namedtuple("losses", ["encoder_loss", "decoder_loss"])
-        encoder_loss = torch.optim.Adam(model.encoder.parameters(), lr=learning_rate)
-        decoder_loss = torch.optim.Adam(
-            model.discriminator.parameters(), lr=learning_rate
-        )
-        return losses(encoder_loss=encoder_loss, decoder_loss=decoder_loss)
+    # if isinstance(model, EncoderDecoder):
+    #     losses = namedtuple("losses", ["encoder_loss", "decoder_loss"])
+    #     encoder_loss = torch.optim.Adam(model.encoder.parameters(), lr=learning_rate)
+    #     decoder_loss = torch.optim.Adam(
+    #         model.discriminator.parameters(), lr=learning_rate
+    #     )
+    #     return losses(encoder_loss=encoder_loss, decoder_loss=decoder_loss)
     # elif isinstance(model, EncoderInnerProduct):
     #     return torch.optim.Adam(model.encoder.parameters(), lr=learning_rate)
 
-    elif isinstance(model, EncoderEntireInput):
+    if isinstance(model, EncoderEntireInput):
         losses = namedtuple("losses", ["encoder_loss", "decoder_loss"])
         encoder_loss = torch.optim.Adam(model.encoder.parameters(), lr=learning_rate)
         decoder_loss = torch.optim.Adam(model.decoder.parameters(), lr=learning_rate)
@@ -332,7 +332,7 @@ def select_model(
 ) -> Union[
     SupremeClassification,
     # SupremeClusteringLink,
-    EncoderDecoder,
+    # EncoderDecoder,
     # EncoderInnerProduct,
     EncoderEntireInput,
 ]:
@@ -361,19 +361,19 @@ def select_model(
         )
     else:
         # https://arxiv.org/abs/1802.04407
-        if super_unsuper_model == SuperUnsuperModel.discriminator.name:
-            encoder = Encoder(in_size=in_size, hid_size=hid_size, out_size=out_size)
-            discriminator = Discriminator(
-                in_size=in_size, hid_size=hid_size, out_size=out_size
-            )
-            return EncoderDecoder(encoder=encoder, discriminator=discriminator)
+        # if super_unsuper_model == SuperUnsuperModel.discriminator.name:
+        #     encoder = Encoder(in_size=in_size, hid_size=hid_size, out_size=out_size)
+        #     discriminator = Discriminator(
+        #         in_size=in_size, hid_size=hid_size, out_size=out_size
+        #     )
+        #     return EncoderDecoder(encoder=encoder, discriminator=discriminator)
         # elif super_unsuper_model == SuperUnsuperModel.linkprediction.name:
         #     model = SUPREME(in_size=in_size, hid_size=hid_size, out_size=out_size)
         #     return SupremeClusteringLink(model=model)
         # elif super_unsuper_model == SuperUnsuperModel.encoderinproduct.name:
         #     encoder = SUPREME(in_size=in_size, hid_size=hid_size, out_size=out_size)
         #     return EncoderInnerProduct(encoder=encoder)
-        else:
+        if super_unsuper_model == SuperUnsuperModel.entireinput.name:
             encoder = SUPREME(in_size=in_size, hid_size=hid_size, out_size=out_size)
             decoder = Discriminator(
                 in_size=in_size, hid_size=hid_size, out_size=out_size
