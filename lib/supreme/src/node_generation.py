@@ -182,7 +182,7 @@ def node_embedding_generation(
                         ),
                         resources_per_trial={"cpu": 5, "gpu": 0},
                         config=config,
-                        num_samples=3,
+                        num_samples=10,
                         scheduler=scheduler,
                     )
                     # best_trial = result.get_best_trial("loss", "min", "last")
@@ -309,13 +309,13 @@ def train_steps(
         patience_count = 0
         for epoch in range(MAX_EPOCHS):
             loss, emb = model.train(optimizer, data)
-            auc, ap, val_loss = model.validate(data=data)
+            val_loss = model.validate(data=data)
 
-            logger.info(
-                f"Number: {x_times}, epoch: {epoch}, train_loss: {loss}, {metric_1}: {auc}, {metric_2}: {ap}",
-            )
-            if loss < min_valid_loss and auc > model_accuracy:
-                model_accuracy = auc
+            # logger.info(
+            #     f"Number: {x_times}, epoch: {epoch}, train_loss: {loss}, {metric_1}: {auc}, {metric_2}: {ap}",
+            # )
+            if loss < min_valid_loss:  # and auc > model_accuracy:
+                # model_accuracy = auc
                 min_valid_loss = loss
                 patience_count = 0
                 this_emb = emb
@@ -324,27 +324,27 @@ def train_steps(
             if epoch >= MIN_EPOCHS and patience_count >= PATIENCE:
                 break
 
-        checkpoint_data = {
-            "epoch": epoch,
-            # "net_state_dict": model.state_dict(),
-            # "optimizer_state_dict": optimizer.state_dict(),
-        }
-        checkpoint = Checkpoint.from_directory(checkpoint_data)
+        # checkpoint_data = {
+        #     "epoch": epoch,
+        #     # "net_state_dict": model.state_dict(),
+        #     # "optimizer_state_dict": optimizer.state_dict(),
+        # }
+        # checkpoint = Checkpoint.from_directory(checkpoint_data)
 
         report(
             {
                 "loss": min_valid_loss,
-                "accuracy": min_valid_loss,
+                # "accuracy": auc,
                 # "embeddings": this_emb,
             },
-            checkpoint=checkpoint,
+            # checkpoint=checkpoint,
         )
 
     av_valid_losses.append(min_valid_loss)
 
-    print("Finished Training")
     av_valid_loss = round(statistics.median(av_valid_losses), 3)
     if av_valid_loss < best_ValidLoss:
         best_ValidLoss = av_valid_loss
         selected_emb = this_emb
+        selected_emb = selected_emb.detach()
     pd.DataFrame(selected_emb).to_pickle(f"{name}")

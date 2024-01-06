@@ -49,7 +49,6 @@ def combine_trails(base_path: str) -> List[List[int]]:
             trial_combs.extend([list(x) for x in combinations(t, r)])
         final_trial_combs[file] = trial_combs
     return final_trial_combs
-    # return [combinations(NODE_NETWORKS, i) for i in range(1, len(NODE_NETWORKS)+1)]
 
 
 sample_data, users, labels = txt_to_pickle()

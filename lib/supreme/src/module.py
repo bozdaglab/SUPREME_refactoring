@@ -154,7 +154,7 @@ class SupremeClusteringLink:
         edge_label_n = torch.zeros(src_neg.size(0))
         link_pred = torch.cat((link_pred_p, link_pred_n), dim=0)
         edge_label = torch.cat((edge_label_p, edge_label_n), dim=0)
-        loss = F.binary_cross_entropy_with_logits(link_pred, edge_label)
+        loss = self.criterion_link(link_pred, edge_label)
         # this can be an alternative
         # node_score = []
         # for pos_node in src_pos:
@@ -200,7 +200,7 @@ class SupremeClusteringLink:
         pred = torch.cat([pos_pred, neg_pred], dim=0)
         loss = self.criterion_link(y, pred)
         y, pred = y.detach().cpu().numpy(), pred.detach().cpu().numpy()
-        return roc_auc_score(y, pred), average_precision_score(y, pred), loss
+        return roc_auc_score(y, pred), average_precision_score(y, pred), float(loss)
 
 
 class EncoderDecoder:
@@ -312,8 +312,9 @@ class EncoderInnerProduct:
         neg_pred = self.model.decoder(emb, neg_data, sigmoid=True)
         pred = torch.cat([pos_pred, neg_pred], dim=0)
         loss = self.criterion(y, pred)
-        y, pred = y.detach().cpu().numpy(), pred.detach().cpu().numpy()
-        return roc_auc_score(y, pred), average_precision_score(y, pred), loss
+        # y, pred = y.detach().cpu().numpy(), pred.detach().cpu().numpy()
+        # return roc_auc_score(y, pred), average_precision_score(y, pred),
+        return float(loss)
 
 
 class EncoderEntireInput:
