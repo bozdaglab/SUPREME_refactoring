@@ -2,16 +2,21 @@
 
 import logging
 
-import numpy as np
+# import numpy as np
 import torch
 import torch.nn.functional as F
 from dotenv import find_dotenv, load_dotenv
 from learning_types import LearningTypes
 from set_logging import set_log_config
-from sklearn.metrics import average_precision_score, roc_auc_score, r2_score, mean_squared_error
+from sklearn.metrics import (
+    average_precision_score,
+    mean_squared_error,
+    r2_score,
+    roc_auc_score,
+)
 from torch.nn import Linear, Module
 from torch_geometric.data import Data
-from torch_geometric.nn import ARGVA, GCNConv  # GAE, GCNConv
+from torch_geometric.nn import ARGVA, GAE, GCNConv
 
 # from torch_geometric.nn.models.autoencoder import InnerProductDecoder
 set_log_config()
@@ -125,7 +130,7 @@ class SupremeClusteringLink:
     def __init__(self, model: SUPREME) -> None:
         self.model = model
         self.criterion_link = torch.nn.BCEWithLogitsLoss()
-        self.Q = 10  # defines the number of negative samples
+        # self.Q = 10  # defines the number of negative samples
 
     def train(self, optimizer: torch.optim, data: Data):
         # GraphSAGE predict adjacency matrix https://arxiv.org/abs/1706.02216
@@ -253,12 +258,8 @@ class EncoderDecoder:
         neg_y = emb.new_zeros(neg_data.size(1))
         y = torch.cat([pos_y, neg_y], dim=0)
 
-        pos_pred = torch.sigmoid(
-            (emb[pos_data[0]] * emb[pos_data[1]]).sum(dim=1)
-        )
-        neg_pred = torch.sigmoid(
-            (emb[neg_data[0]] * emb[neg_data[1]]).sum(dim=1)
-        )
+        pos_pred = torch.sigmoid((emb[pos_data[0]] * emb[pos_data[1]]).sum(dim=1))
+        neg_pred = torch.sigmoid((emb[neg_data[0]] * emb[neg_data[1]]).sum(dim=1))
         pred = torch.cat([pos_pred, neg_pred], dim=0)
         loss = criterion(y, pred)
         y, pred = y.detach().cpu().numpy(), pred.detach().cpu().numpy()
@@ -325,7 +326,7 @@ class EncoderEntireInput:
         self.encoder.train()
         optimizer.encoder_loss.zero_grad()
         emb, _ = self.encoder(data)
-        out_emb =  self.decoder(emb)
+        out_emb = self.decoder(emb)
         loss = self.criterion(out_emb, data.x)
         loss.backward()
         optimizer.encoder_loss.step()
@@ -367,12 +368,10 @@ class EncoderEntireInput:
 #         "classification": SupremeClassification,
 #         "discriminator":
 #     }
-    
-
-
 
 
 """"""
+
 
 class example:
     def __init__(self, encoder: SUPREME, decoder: Discriminator):
@@ -405,7 +404,7 @@ class example:
         out = self.compute(emb, start, rest, pos_rw)
         neg_loss = -torch.log(1 - torch.sigmoid(out) + EPS).mean()
         loss = pos_loss + neg_loss  # maybe get the average loss
-        
+
         loss.backward()
         optimizer.encoder_loss.step()
         if not isinstance(loss, float):
@@ -439,4 +438,3 @@ class example:
         loss = self.criterion(y, pred)
         y, pred = y.detach().cpu().numpy(), pred.detach().cpu().numpy()
         return roc_auc_score(y, pred), average_precision_score(y, pred), loss
-

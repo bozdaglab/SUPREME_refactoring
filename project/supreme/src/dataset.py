@@ -78,9 +78,8 @@ def select_generator(func_name: str, thr: float):
     return partial(factory[func_name], thr)
 
 
-# @ray.remote(num_cpus=os.cpu_count())
+@ray.remote(num_cpus=os.cpu_count())
 def similarity_matrix_generation(new_dataset: Dict, stat: str, func_name=FUNC_NAME):
-    # parqua dataset, parallel
     stat_model = get_stat_methos(stat)
     path_dir = EDGES / stat
     if not os.path.exists(path_dir):

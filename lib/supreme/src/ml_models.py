@@ -164,10 +164,11 @@ class MLModels:
         return search.best_estimator
 
     def RF(self):
-        max_depth = [int(x) for x in np.linspace(50, 300, num=50)]
-        max_depth.append(None)
+        # max_depth = [int(x) for x in np.linspace(50, 300, num=50)]
+        # max_depth.append(None)
         params = {
-            "n_estimators": [int(x) for x in np.linspace(start=50, stop=400, num=50)]
+            "max_depth": [int(x) for x in np.linspace(50, 300, num=50)]
+            # "n_estimators": [int(x) for x in np.linspace(start=50, stop=400, num=50)]
         }
         search = TuneSearchCV(
             estimator=RandomForestClassifier(),
@@ -175,8 +176,9 @@ class MLModels:
             scoring="f1_macro",
             param_distributions=params,
             cv=4,
-            n_iter=X_TIME,
+            n_trials=X_TIME,
             search_optimization="optuna",
+            n_jobs=-1,
             early_stopping=True,
             verbose=0,
         )
