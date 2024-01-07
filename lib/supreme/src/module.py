@@ -10,8 +10,8 @@ from learning_types import LearningTypes
 from set_logging import set_log_config
 from sklearn.metrics import (
     average_precision_score,
-    mean_squared_error,
-    r2_score,
+    # mean_squared_error,
+    # r2_score,
     roc_auc_score,
 )
 from torch.nn import Linear, Module
