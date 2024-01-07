@@ -81,6 +81,8 @@ PATIENCE = int(os.environ.get("PATIENCE"))
 FEATURE_NETWORKS_INTEGRATION = [
     i for i in os.listdir(BASE_DATAPATH) if i.endswith(".csv")
 ]
+PATH_FEATURES = DATA.parent / "selected_features"
+PATH_EMBEDDIGS = DATA.parent / "selected_features_embeddings"
 
 NODE_NETWORKS = FEATURE_NETWORKS_INTEGRATION.copy()
 

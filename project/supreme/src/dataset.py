@@ -7,8 +7,6 @@ from typing import Dict, Optional
 
 import networkx as nx
 import pandas as pd
-
-# import ray
 import torch
 from feature_selections import select_features
 from helper import (
@@ -21,18 +19,20 @@ from helper import (
 from networkx.readwrite import json_graph
 from pre_processings import pre_processing
 from set_logging import set_log_config
-from settings import BASE_DATAPATH, DATA, EDGES, LABELS, SELECTION_METHOD, STAT_METHOD
+from settings import (
+    EDGES,
+    LABELS,
+    PATH_EMBEDDIGS,
+    PATH_FEATURES,
+    SELECTION_METHOD,
+    STAT_METHOD,
+)
 
 # from torch import Tensor
 from sklearn.preprocessing import LabelEncoder
 from torch import Tensor
 from torch_geometric.data import Dataset
 from torch_geometric.utils import remove_self_loops
-
-# from torch_geometric.data import Data
-path_features = DATA.parent / "selected_features"
-path_embeggings = DATA.parent / "selected_features_embeddings"
-
 
 logger = logging.getLogger()
 set_log_config()
@@ -56,7 +56,7 @@ class BioDataset(Dataset):
         log: bool = True,
     ):
         self.file_name = file_name
-        super().__init__(root, transform, pre_transform, pre_filter, log)
+        super().__init__(root, transform)
 
     @property
     def raw_file_names(self):
@@ -64,7 +64,8 @@ class BioDataset(Dataset):
 
     @property
     def processed_file_names(self):
-        return self.file_name
+        files = [file.replace(".txt", ".pkl") for file in self.file_name]
+        return files
 
     def download(self):
         pass
@@ -91,12 +92,13 @@ class BioDataset(Dataset):
             if "data_cna" in file or "data_mrna" in file:
                 data.drop("Entrez_Gene_Id", axis=1, inplace=True)
             to_save_folder = self.save_folder(file=file)
-            self.make_directories(to_save_folder)
+            self.make_directory(to_save_folder)
             if "data_clinical_patient" in file:
                 patient_id = data["PATIENT_ID"]
-                labels = data[["PATIENT_ID", "CLAUDIN_SUBTYPE"]]
                 data.drop("PATIENT_ID", axis=1, inplace=True)
                 data = data.apply(LabelEncoder().fit_transform)
+                labels = data[["CLAUDIN_SUBTYPE"]]
+                labels["PATIENT_ID"] = patient_id
             else:
                 hugo_symbol = data["Hugo_Symbol"]
                 data.drop("Hugo_Symbol", axis=1, inplace=True)
@@ -109,7 +111,7 @@ class BioDataset(Dataset):
                 data = pre_processing(data)
             data.insert(0, column="PATIENT_ID", value=patient_id)
             data = data.set_index("PATIENT_ID")
-            users[file_name] = patient_id
+            users[file_name] = data.index
             sample_data[file_name] = data
         return sample_data, users, labels
 
@@ -121,9 +123,13 @@ class BioDataset(Dataset):
             os.mkdir(LABELS)
         labels.to_pickle(f"{LABELS}/labels.pkl")
 
-    def make_directories(self, dir_name):
+    def make_directory(self, dir_name):
         if not os.path.exists(dir_name):
             os.mkdir(dir_name)
+
+    def make_directories(self, dir_name):
+        if not os.path.exists(dir_name):
+            os.makedirs(dir_name)
 
     def save_folder(self, file):
         to_save_folder = self.processed_dir
@@ -155,11 +161,11 @@ class BioDataset(Dataset):
                 new_dataset=sample_data,
                 labels=labels,
                 feature_type=feature_type,
-                path_features=path_features,
-                path_embeggings=path_embeggings,
+                path_features=PATH_FEATURES,
+                path_embeggings=PATH_EMBEDDIGS,
             )
         for stat in STAT_METHOD:
-            self.similarity_matrix_generation(sample_data=sample_data, stat=stat)
+            self.similarity_matrix_generation(new_dataset=sample_data, stat=stat)
 
     def node_feature_generation(
         self,
@@ -188,7 +194,9 @@ class BioDataset(Dataset):
             if row_col_ratio(feat):
                 # add an inner remote function and use get to get the result of the inner one before proceding
                 feat, final_features = select_features(
-                    application_train=feat, labels=labels, feature_type=feature_type
+                    application_train=feat,
+                    labels=labels["CLAUDIN_SUBTYPE"],
+                    feature_type=feature_type,
                 )
                 selected_features.extend(final_features)
                 if not any(feat):
@@ -204,13 +212,11 @@ class BioDataset(Dataset):
                 new_x = torch.cat(
                     (new_x, torch.tensor(values, device=DEVICE).float()), dim=1
                 )
-        if not os.path.exists(path_features):
-            os.makedirs(path_features)
+        self.make_directories(path_features)
         pd.DataFrame(selected_features).to_pickle(
             path_features / f"selected_features_{feature_type}.pkl"
         )
-        if not os.path.exists(path_embeggings):
-            os.makedirs(path_embeggings)
+        self.make_directories(path_embeggings)
         pd.DataFrame(new_x).to_pickle(
             path_embeggings / f"embeddings_{feature_type}.pkl"
         )
@@ -221,9 +227,7 @@ class BioDataset(Dataset):
         logger.info("Start generating similarity matrix...")
         stat_model = get_stat_methos(stat)
         path_dir = EDGES / stat
-        if not os.path.exists(path_dir):
-            os.makedirs(path_dir)
-
+        self.make_directories(path_dir)
         for file_name, data in new_dataset.items():
             correlation_dictionary = defaultdict(list)
             thr = chnage_connections_thr(file_name, stat)
@@ -245,24 +249,25 @@ class BioDataset(Dataset):
                 correlation_dictionary["directed"] = False
                 correlation_dictionary["multigraph"] = False
                 correlation_dictionary["graph"] = {}
-                with open(path_dir / f"similarity_{file_name}", "wb") as pickle_file:
+                with open(
+                    path_dir / f"similarity_{file_name}.pkl", "wb"
+                ) as pickle_file:
                     pickle.dump(correlation_dictionary, pickle_file)
             elif any(correlation_dictionary):
                 pd.DataFrame(
                     correlation_dictionary.values(),
                     columns=list(correlation_dictionary.items())[0][1].keys(),
-                ).to_pickle(path_dir / f"similarity_{file_name}")
-        return None
+                ).to_pickle(path_dir / f"similarity_{file_name}.pkl")
 
     def select_generator(self, func_name: str, thr: float):
         factory = {
-            "only_one": self.similarity_only_one,
-            "zero_one": self.similarity_zero_one,
-            "only_one_nx": self.similarity_only_one_nx,
+            "only_one": self._similarity_only_one,
+            "zero_one": self._similarity_zero_one,
+            "only_one_nx": self._similarity_only_one_nx,
         }
         return partial(factory[func_name], thr)
 
-    def similarity_only_one(
+    def _similarity_only_one(
         self,
         thr: float,
         ind_i: int,
@@ -278,7 +283,7 @@ class BioDataset(Dataset):
                 "Similarity Score": similarity_score,
             }
 
-    def similarity_zero_one(
+    def _similarity_zero_one(
         self,
         thr: float,
         ind_i: int,
@@ -293,7 +298,7 @@ class BioDataset(Dataset):
             "Similarity Score": similarity_score,
         }
 
-    def similarity_only_one_nx(
+    def _similarity_only_one_nx(
         self,
         thr: float,
         ind_i: int,
@@ -310,8 +315,3 @@ class BioDataset(Dataset):
 
     def get(self):
         pass
-
-
-train_dataset = BioDataset(
-    root="data/sample_data/", file_name=os.listdir(f"{BASE_DATAPATH}/raw")
-)

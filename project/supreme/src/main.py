@@ -7,20 +7,19 @@ from itertools import combinations, product
 from typing import List
 
 import pandas as pd
-import ray
 import torch
-from dataset import set_same_users, similarity_matrix_generation, txt_to_pickle
+from dataset import BioDataset
 from dotenv import find_dotenv, load_dotenv
 from helper import random_split
-from node_generation import node_embedding_generation, node_feature_generation
+from node_generation import node_embedding_generation
 from set_logging import set_log_config
 from settings import (
     BASE_DATAPATH,
-    DATA,
     EDGES,
     EMBEDDINGS,
+    LABELS,
     LEARNING,
-    SELECTION_METHOD,
+    PATH_EMBEDDIGS,
     STAT_METHOD,
 )
 from train_mls import train_ml_model
@@ -51,50 +50,18 @@ def combine_trails(base_path: str) -> List[List[int]]:
     return final_trial_combs
 
 
-sample_data, users, labels = txt_to_pickle()
-
-
-new_dataset, labels = set_same_users(
-    sample_data=sample_data, users=users, labels=labels
-)
-
-ray.init()
-
-if os.path.exists(EDGES):
-    pass
-else:
-    similarity_result_ray = [
-        similarity_matrix_generation.remote(new_dataset, stat) for stat in STAT_METHOD
-    ]
-    ray.wait(similarity_result_ray)
-
 logger.info("SUPREME is running..")
-path_features = DATA.parent / "selected_features"
-path_embeggings = DATA.parent / "selected_features_embeddings"
 
-if os.path.exists(path_embeggings):
-    pass
-else:
-    embeddings_result_ray = [
-        node_feature_generation.remote(
-            new_dataset=new_dataset,
-            labels=labels,
-            feature_type=feature_type,
-            path_features=path_features,
-            path_embeggings=path_embeggings,
-        )
-        for feature_type in SELECTION_METHOD
-    ]
+BioDataset(root="data/sample_data/", file_name=os.listdir(f"{BASE_DATAPATH}/raw"))
 
-    ray.wait(embeddings_result_ray)
-
+labels = pd.read_pickle(LABELS / os.listdir(LABELS)[0])
 if not os.path.exists(EMBEDDINGS):
     for stat in os.listdir(EDGES):
         final_correlation = defaultdict()
         for file in os.listdir(EDGES / stat):
             final_correlation[file] = pd.read_pickle(EDGES / stat / file)
-        for idx, feature_type in enumerate(os.listdir(path_embeggings)):
-            new_x = pd.read_pickle(path_embeggings / feature_type)
+        for idx, feature_type in enumerate(os.listdir(PATH_EMBEDDIGS)):
+            new_x = pd.read_pickle(PATH_EMBEDDIGS / feature_type)
             if isinstance(new_x, pd.DataFrame):
                 new_x = torch.tensor(new_x.values, dtype=torch.float32)
             train_valid_idx, test_idx = random_split(new_x)
