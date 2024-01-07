@@ -19,7 +19,7 @@ from helper import nan_checker, row_col_ratio  # edge_index_from_dict
 from learning_types import LearningTypes, SuperUnsuperModel
 from pre_processings import pre_processing
 from ray import tune
-from ray.train import Checkpoint, report
+from ray.train import report  # Checkpoint, report
 
 # from ray.air import session
 from ray.tune.schedulers import ASHAScheduler
@@ -51,8 +51,8 @@ DEVICE = torch.device("cpu")
 
 
 config = {
-    "hidden_size": tune.choice([2**i for i in range(4, 9)]),
-    "lr": tune.loguniform(1e-4, 1e-1),
+    "hidden_size": tune.choice([2**i for i in range(4, 5)]),
+    "lr": tune.loguniform(1e-4, 1e-3),
     # "batch_size": tune.choice([2, 4, 8, 16])
 }
 scheduler = ASHAScheduler(

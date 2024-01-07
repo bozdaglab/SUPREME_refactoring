@@ -199,8 +199,9 @@ class SupremeClusteringLink:
         neg_pred = (emb[neg_data[0]] * emb[neg_data[1]]).sum(dim=-1)
         pred = torch.cat([pos_pred, neg_pred], dim=0)
         loss = self.criterion_link(y, pred)
-        y, pred = y.detach().cpu().numpy(), pred.detach().cpu().numpy()
-        return roc_auc_score(y, pred), average_precision_score(y, pred), float(loss)
+        # y, pred = y.detach().cpu().numpy(), pred.detach().cpu().numpy()
+        # return roc_auc_score(y, pred), average_precision_score(y, pred), float(loss)
+        return float(loss)
 
 
 class EncoderDecoder:
@@ -262,8 +263,9 @@ class EncoderDecoder:
         neg_pred = torch.sigmoid((emb[neg_data[0]] * emb[neg_data[1]]).sum(dim=1))
         pred = torch.cat([pos_pred, neg_pred], dim=0)
         loss = criterion(y, pred)
-        y, pred = y.detach().cpu().numpy(), pred.detach().cpu().numpy()
-        return roc_auc_score(y, pred), average_precision_score(y, pred), loss
+        # y, pred = y.detach().cpu().numpy(), pred.detach().cpu().numpy()
+        # return roc_auc_score(y, pred), average_precision_score(y, pred), loss
+        return float(loss)
 
 
 class EncoderInnerProduct:
@@ -341,7 +343,8 @@ class EncoderEntireInput:
         emb, _ = self.encoder(data)
         dec_out = self.decoder(emb)
         loss = self.criterion(dec_out, data.x)
-        return r2_score(dec_out, data.x), mean_squared_error(dec_out, data.x), loss
+        # return r2_score(dec_out, data.x), mean_squared_error(dec_out, data.x), loss
+        return float(loss)
 
 
 # # mask some edges and used those as negative values
