@@ -15,9 +15,8 @@ import torch
 
 # from dataset import process_data
 from feature_selections import select_features
-from helper import nan_checker, row_col_ratio  # edge_index_from_dict
-from learning_types import LearningTypes, SuperUnsuperModel
-from pre_processings import pre_processing
+from helper import row_col_ratio  # edge_index_from_dict
+from learning_types import LearningTypes  # , SuperUnsuperModel
 from ray import tune
 from ray.train import report  # Checkpoint, report
 
@@ -89,8 +88,6 @@ def node_feature_generation(
     selected_features = []
     for _, feat in new_dataset.items():
         if row_col_ratio(feat):
-            if nan_checker(feat):
-                feat = pre_processing(feat)
             # add an inner remote function and use get to get the result of the inner one before proceding
             feat, final_features = select_features(
                 application_train=feat, labels=labels, feature_type=feature_type
@@ -278,13 +275,13 @@ def train_steps(
     in_size = data.x.shape[1]
     min_valid_loss = np.Inf
     this_emb = None
-    model_accuracy = 0
-    if super_unsuper_model == SuperUnsuperModel.entireinput.name:
-        metric_1 = "r2_square"
-        metric_2 = "mean_square_error"
-    else:
-        metric_1 = "auc"
-        metric_2 = "ap"
+    # model_accuracy = 0
+    # if super_unsuper_model == SuperUnsuperModel.entireinput.name:
+    #     metric_1 = "r2_square"
+    #     metric_2 = "mean_square_error"
+    # else:
+    #     metric_1 = "auc"
+    #     metric_2 = "ap"
 
     model = select_model(
         in_size=in_size,
@@ -305,11 +302,11 @@ def train_steps(
     #     optimizer.load_state_dict(checkpoint_state["optimizer_state_dict"])
     # else:
     #     start_epoch = 0
-    for x_times in range(X_TIME2):
+    for _ in range(X_TIME2):
         patience_count = 0
         for epoch in range(MAX_EPOCHS):
             loss, emb = model.train(optimizer, data)
-            val_loss = model.validate(data=data)
+            # val_loss = model.validate(data=data)
 
             # logger.info(
             #     f"Number: {x_times}, epoch: {epoch}, train_loss: {loss}, {metric_1}: {auc}, {metric_2}: {ap}",

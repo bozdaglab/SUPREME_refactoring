@@ -1,44 +1,51 @@
 import logging
 import os
-import pickle
+import os.path as osp
 from collections import defaultdict
 from functools import partial
-from typing import Dict, Optional
+from itertools import product
+from typing import Optional
 
-import networkx as nx
+import numpy as np
 import pandas as pd
 import torch
-from feature_selections import select_features
-from helper import (
-    chnage_connections_thr,
-    get_stat_methos,
-    nan_checker,
-    row_col_ratio,
-    search_dictionary,
-)
-from networkx.readwrite import json_graph
-from pre_processings import pre_processing
+from helper import masking_indexes, pos_neg, random_split
+from learning_types import SelectModel
+from node_generation import node_feature_generation
+from pre_process_data import prepare_data, similarity_matrix_generation
 from set_logging import set_log_config
-from settings import (
+from settings import (  # WALK_LENGHT,; WALK_PER_NODE,
+    BASE_DATAPATH,
+    CONTEXT_SIZE,
+    DATA,
     EDGES,
+    EMBEDDING_DIM,
     LABELS,
     PATH_EMBEDDIGS,
     PATH_FEATURES,
+    POS_NEG_MODELS,
     SELECTION_METHOD,
+    SPARSE,
     STAT_METHOD,
+    WALK_LENGHT,
+    P,
+    Q,
 )
-
-# from torch import Tensor
-from sklearn.preprocessing import LabelEncoder
+from sklearn.model_selection import RepeatedStratifiedKFold, train_test_split
 from torch import Tensor
-from torch_geometric.data import Dataset
-from torch_geometric.utils import remove_self_loops
+from torch_geometric.data import Data, Dataset
+from torch_geometric.nn import Node2Vec
+from torch_geometric.utils import (
+    coalesce,
+    negative_sampling,
+    remove_self_loops,
+    train_test_split_edges,
+)
+from torch_geometric.utils.num_nodes import maybe_num_nodes
 
 logger = logging.getLogger()
 set_log_config()
-FUNC_NAME = "only_one"
 DEVICE = torch.device("cpu")
-
 """
 Add NeighborLoader here to create batches with neighbor sampling
 similar to what we see here https://mlabonne.github.io/blog/posts/2022-04-06-GraphSAGE.html
@@ -50,13 +57,14 @@ class BioDataset(Dataset):
         self,
         root: str,
         file_name: str,
-        transform=None,
-        pre_transform=None,
-        pre_filter=None,
-        log: bool = True,
+        raw_directories: str,
+        loader: bool = False,
     ):
         self.file_name = file_name
-        super().__init__(root, transform)
+        self.loader = loader
+        self.raw_directories = raw_directories
+        self._pre_process_run(root)
+        super().__init__(root)
 
     @property
     def raw_file_names(self):
@@ -64,251 +72,289 @@ class BioDataset(Dataset):
 
     @property
     def processed_file_names(self):
-        files = [file.replace(".txt", ".pkl") for file in self.file_name]
-        return files
+        return self.file_name
 
     def download(self):
         pass
 
-    def process_data(self, edge_index: Dict):
-        graph = nx.DiGraph(json_graph.node_link_graph(edge_index))
-        edge_index = torch.tensor(list(graph.edges)).t().contiguous()
-        edge_index, _ = remove_self_loops(edge_index)
-        return edge_index
+    def _pre_process_run(self, root):
+        self.root = root
+        files = [file.replace(".txt", ".pkl") for file in self.raw_directories]
+        if not self.file_exist(files):
+            self.run_prepare_data()
+        self.data_dir = [DATA / file for file in os.listdir(DATA)]
+        self.run_node_feature_generation()
+        self.run_similarity_matrix_generation()
 
-    def read_files(self):
+    def file_exist(self, files):
+        return len(files) != 0 and all([osp.exists(DATA / file) for file in files])
+
+    def run_prepare_data(self):
+        prepare_data(self.raw_paths, DATA)
+
+    def run_node_feature_generation(self):
+        if len(SELECTION_METHOD) == len(os.listdir(PATH_FEATURES)):
+            return
+        feature_selections = SELECTION_METHOD
+        if osp.exists(PATH_FEATURES):
+            feature_files = []
+            for feature, file in product(feature_selections, os.listdir(PATH_FEATURES)):
+                if file.endswith(f"{feature}.pkl"):
+                    feature_files.append(file)
+            if len(feature_selections) != len(feature_files):
+                feature_selections = feature_files
+            else:
+                feature_selections = None
+        if feature_selections:
+            sample_data = self.read_sample_data()
+            labels = self.read_labels()
+            for feature_type in feature_selections:
+                node_feature_generation.remote(
+                    new_dataset=sample_data,
+                    labels=labels,
+                    feature_type=feature_type,
+                    path_features=PATH_FEATURES,
+                    path_embeggings=PATH_EMBEDDIGS,
+                )
+
+    def run_similarity_matrix_generation(self):
+        if sum([len(files) for _, _, files in os.walk(BASE_DATAPATH / EDGES)]) == len(
+            STAT_METHOD
+        ) * len(self.data_dir):
+            return
+        sample_data = self.read_sample_data()
+        for stat in STAT_METHOD:
+            similarity_matrix_generation.remote(new_dataset=sample_data, stat=stat)
+
+    def read_sample_data(self):
         sample_data = defaultdict()
-        labels = ""
-        users = defaultdict()
-        for file in self.raw_paths:
-            if file.endswith(".pkl"):
-                with open(file, "rb") as pkl_file:
-                    data = pickle.load(pkl_file)
-            if file.endswith(".txt"):
-                with open(file, "rb") as txt_file:
-                    data = pd.read_csv(txt_file, sep="\t")
-            else:
-                continue
-            if "data_cna" in file or "data_mrna" in file:
-                data.drop("Entrez_Gene_Id", axis=1, inplace=True)
-            to_save_folder = self.save_folder(file=file)
-            self.make_directory(to_save_folder)
-            if "data_clinical_patient" in file:
-                patient_id = data["PATIENT_ID"]
-                data.drop("PATIENT_ID", axis=1, inplace=True)
-                data = data.apply(LabelEncoder().fit_transform)
-                labels = data[["CLAUDIN_SUBTYPE"]]
-                labels["PATIENT_ID"] = patient_id
-            else:
-                hugo_symbol = data["Hugo_Symbol"]
-                data.drop("Hugo_Symbol", axis=1, inplace=True)
-                patient_id = data.columns
-                data = data.T
-                data.columns = hugo_symbol.values
-            file_name = file.split(".")[0].split("/")[-1]
-            if nan_checker(data):
-                logger.info(f"Start preprocessing {file_name}")
-                data = pre_processing(data)
-            data.insert(0, column="PATIENT_ID", value=patient_id)
-            data = data.set_index("PATIENT_ID")
-            users[file_name] = data.index
-            sample_data[file_name] = data
-        return sample_data, users, labels
+        for file in self.data_dir:
+            sample_data[file] = pd.read_pickle(file)
+        return sample_data
 
-    def save_file(self, sample_data, labels):
-        logger.info("Save file in a pickle format...")
-        for name, featuers in sample_data.items():
-            featuers.to_pickle(f"{self.processed_dir}/{name}.pkl")
-        if not os.path.exists(LABELS):
-            os.mkdir(LABELS)
-        labels.to_pickle(f"{LABELS}/labels.pkl")
-
-    def make_directory(self, dir_name):
-        if not os.path.exists(dir_name):
-            os.mkdir(dir_name)
-
-    def make_directories(self, dir_name):
-        if not os.path.exists(dir_name):
-            os.makedirs(dir_name)
-
-    def save_folder(self, file):
-        to_save_folder = self.processed_dir
-        if "edges_" in file:
-            to_save_folder = EDGES
-        elif "labels." in file:
-            to_save_folder = LABELS
-        return to_save_folder
-
-    def set_same_users(self, sample_data: Dict, users: Dict, labels: Dict) -> Dict:
-        new_dataset = defaultdict()
-        shared_users = search_dictionary(users, len(users) - 1)
-        shared_users = sorted(shared_users)[0:50]
-        shared_users_encoded = LabelEncoder().fit_transform(shared_users)
-        for file_name, data in sample_data.items():
-            new_dataset[file_name] = data[data.index.isin(shared_users)].set_index(
-                shared_users_encoded
-            )
-        return new_dataset, labels[labels["PATIENT_ID"].isin(shared_users)].set_index(
-            shared_users_encoded
-        )
+    def read_labels(self):
+        return pd.read_pickle(LABELS / os.listdir(LABELS)[0])
 
     def process(self):
-        sample_data, users, labels = self.read_files()
-        sample_data, labels = self.set_same_users(sample_data, users, labels)
-        self.save_file(sample_data, labels)
-        for feature_type in SELECTION_METHOD:
-            self.node_feature_generation(
-                new_dataset=sample_data,
-                labels=labels,
-                feature_type=feature_type,
-                path_features=PATH_FEATURES,
-                path_embeggings=PATH_EMBEDDIGS,
-            )
-        for stat in STAT_METHOD:
-            self.similarity_matrix_generation(new_dataset=sample_data, stat=stat)
+        labels = self.read_labels()
+        generator = self.data_generator_selector(labels)
+        for stat, feature_type in product(
+            os.listdir(EDGES), os.listdir(PATH_EMBEDDIGS)
+        ):
+            new_x = pd.read_pickle(PATH_EMBEDDIGS / feature_type)
+            if isinstance(new_x, pd.DataFrame):
+                new_x = torch.tensor(new_x.values, dtype=torch.float32)
+            for file in os.listdir(EDGES / stat):
+                dir = os.path.join(
+                    self.processed_dir,
+                    stat,
+                    feature_type.split("_")[1].split(".")[0],
+                    file.split(".")[0],
+                )
+                if not os.path.exists(dir):
+                    os.makedirs(dir)
+                    edge_index = pd.read_pickle(EDGES / stat / file)
+                    generator(new_x=new_x, edge_index=edge_index, dir=dir)
 
-    def node_feature_generation(
-        self,
-        new_dataset: Dict,
-        labels: Dict,
-        path_features: str,
-        path_embeggings: str,
-        feature_type: Optional[str] = None,
-    ) -> Tensor:
+    def data_generator_selector(self, labels):
+        if self.loader:
+            return partial(self.create_with_loader, labels=labels)
+        else:
+            return partial(self.create_without_loader, labels=None)
+
+    def create_without_loader(self, new_x, edge_index, dir, labels=None):
+        for data_generation_types in POS_NEG_MODELS:
+            data = self.create_data(
+                new_x=new_x,
+                data_generation_types=data_generation_types,
+                edge_index=edge_index,
+            )
+            torch.save(data, osp.join(dir, f"{data_generation_types}.pt"))
+
+    def create_with_loader(self, new_x, labels, edge_index, dir):
+        graphs = []
+        for idx, patient in enumerate(new_x):
+            node_features = patient
+            label = labels["CLAUDIN_SUBTYPE"][labels.index == idx].values
+            data = Data(x=node_features, edge_index=edge_index, y=label)
+            graphs.append(data)
+        data, slice = self.collate(data)
+        torch.save((data, slice), dir / f"data_{idx}.pt")
+        # create dataloader
+        # for stat in os.listdir(EDGES):
+        #     final_correlation = defaultdict()
+        #     for file in os.listdir(EDGES / stat):
+        #         final_correlation[file] = pd.read_pickle(EDGES / stat / file)
+        #     new_x = pd.read_pickle(PATH_EMBEDDIGS / os.listdir(PATH_EMBEDDIGS)[0])
+        #     if isinstance(new_x, pd.DataFrame):
+        #         new_x = torch.tensor(new_x.values, dtype=torch.float32)
+        #     lables = pd.read_pickle(LABELS / os.listdir(LABELS)[0])
+        #     base_dir = BASE_DATAPATH / stat
+        #     for file_name, edge_index in final_correlation.items():
+        #         dataset_dir = base_dir / file_name
+        #         self.make_directories(dataset_dir)
+        #         graphs = []
+        #         for idx, patient in enumerate(new_x):
+        #             node_features = patient
+        #             # edge_index = np.where(edges["Patient_1"] == idx)
+        #             label = labels["CLAUDIN_SUBTYPE"][lables.index == idx].values
+        #             data =  Data(x=node_features, edge_index=edge_index, y=label)
+        #             graphs.append(data)
+        #         data, slice = self.collate(data)
+        #         torch.save((data, slice), dataset_dir / f"data_{idx}.pt")
+
+    def create_data(
+        self, new_x, data_generation_types: str, edge_index: pd.DataFrame
+    ) -> Data:
         """
-        Load features from each omic separately, apply feature selection if needed,
-        and contact them together
+        Create a data object by adding features, edge_index, edge_attr.
+        For unsupervised GCN, this function
+            1) creates positive and negative edges using Node2vec or
+            2) make masking in the input data.
 
         Parameters:
-        ----------
-        labels:
-            Dataset labels in case we want to apply feature selection algorithems
+        -----------
+        edge_index:
+            Adjacency matrix
+        Return:
+            A data object ready to pass to GCN
+        """
+        train_valid_idx, test_idx = random_split(new_x=new_x)
+        if isinstance(edge_index, dict):
+            edge_index = pd.DataFrame(edge_index).T
+        # edge_index = process_data(edge_index=edge_index)
+        # use index to mask inorder to generate the val, test, and train
+        # index_to_mask (e.g, index_to_mask(train_index, size=y.size(0)))
+        data = self.make_data(new_x=new_x, edge_index=edge_index)
+        if data_generation_types == SelectModel.node2vec.name:
+            node2vec = Node2Vec(
+                edge_index=data.edge_index,
+                embedding_dim=EMBEDDING_DIM,
+                walk_length=WALK_LENGHT,
+                context_size=CONTEXT_SIZE,
+                walks_per_node=6,
+                p=P,
+                q=Q,
+                sparse=SPARSE,
+            ).to(DEVICE)
+            pos, neg = node2vec.sample([10, 15])  # batch size
+            data.pos_edge_labels = torch.tensor(pos.T, device=DEVICE).long()
+            data.neg_edge_labels = torch.tensor(neg.T, device=DEVICE).long()
+        # elif data_generation_types == SelectModel.similarity_based.name:
+        #     data.pos_edge_labels = pos_neg(edge_index, "link", 1)
+        #     data.neg_edge_labels = pos_neg(edge_index, "link", 0)
+        elif data_generation_types == SelectModel.train_test.name:
+            data.num_nodes = maybe_num_nodes(data.edge_index)
+            edge_index = data.edge_index
+            edge_attr = data.edge_attr
+            data = train_test_split_edges(data=data)
+            data.edge_index = edge_index
+            data.edge_attr = edge_attr
+        elif data_generation_types == SelectModel.similarity_based.name:
+            data.pos_edge_labels = pos_neg(edge_index, "link", 1)
+            data.neg_edge_labels = negative_sampling(
+                data.pos_edge_labels, new_x.size(0)
+            )
+        return self.train_test_valid(
+            data=data, train_valid_idx=train_valid_idx, test_idx=test_idx
+        )
 
+    def make_data(self, new_x: Tensor, edge_index: pd.DataFrame) -> Data:
+        """
+        Generate a data object that holds node features, edge_index and edge_attr.
+
+        Parameters:
+        -----------
+        new_x:
+            Concatenated features from different omics file
+        edge_index:
+            Adjacency matrix
 
         Return:
-            Concatenated features from different omics file
+            A data object
         """
-        is_first = True
-        selected_features = []
-        for _, feat in new_dataset.items():
-            if row_col_ratio(feat):
-                # add an inner remote function and use get to get the result of the inner one before proceding
-                feat, final_features = select_features(
-                    application_train=feat,
-                    labels=labels["CLAUDIN_SUBTYPE"],
-                    feature_type=feature_type,
-                )
-                selected_features.extend(final_features)
-                if not any(feat):
-                    continue
-                values = torch.tensor(feat.values, device=DEVICE)
-            else:
-                selected_features.extend(feat.columns)
-                values = feat.values
-            if is_first:
-                new_x = torch.tensor(values, device=DEVICE).float()
-                is_first = False
-            else:
-                new_x = torch.cat(
-                    (new_x, torch.tensor(values, device=DEVICE).float()), dim=1
-                )
-        self.make_directories(path_features)
-        pd.DataFrame(selected_features).to_pickle(
-            path_features / f"selected_features_{feature_type}.pkl"
+        data = Data(
+            x=new_x,
+            edge_index=torch.tensor(
+                edge_index[edge_index.columns[0:2]].transpose().values,
+                device=DEVICE,
+            ).long(),
+            edge_attr=torch.tensor(
+                edge_index[edge_index.columns[3]].transpose().values,
+                device=DEVICE,
+            ).float(),
         )
-        self.make_directories(path_embeggings)
-        pd.DataFrame(new_x).to_pickle(
-            path_embeggings / f"embeddings_{feature_type}.pkl"
+        edge_index, _ = remove_self_loops(data.edge_index)
+        data.edge_index = coalesce(edge_index=edge_index, num_nodes=new_x.shape[0])
+        return data
+
+    def train_test_valid(
+        self,
+        data: Data,
+        train_valid_idx: Tensor,
+        test_idx: Tensor,
+        labels: Optional[pd.DataFrame] = None,
+    ) -> Data:
+        """
+        This function adds train, test, and validation data to the data object.
+        If a label is available, it applies a Repeated Stratified K-Fold cross-validator.
+        Otherwise, split the tensor into random train and test subsets.
+
+        Parameters:
+        -----------
+        data:
+            Data object
+        train_valid_idx:
+            train validation indexes
+        test_idx:
+            test indexes
+        labels:
+            Dataset labels
+
+        Return:
+            A data object that holds train, test, and validation indexes
+        """
+        if labels is not None:
+            try:
+                X = data.x[train_valid_idx.indices]
+                y = data.y[train_valid_idx.indices]
+            except:
+                X = data.x[train_valid_idx]
+                y = data.y[train_valid_idx]
+            # y_ph = labels.iloc[:, 3][train_valid_idx.indices]
+
+            rskf = RepeatedStratifiedKFold(n_splits=4, n_repeats=1)
+            for train_part, valid_part in rskf.split(X, y):
+                try:
+                    train_idx = np.array(train_valid_idx.indices)[train_part]
+                    valid_idx = np.array(train_valid_idx.indices)[valid_part]
+                except:
+                    train_idx = np.array(train_valid_idx)[train_part]
+                    valid_idx = np.array(train_valid_idx)[valid_part]
+                break
+
+        elif "val_pos_edge_index" in data.keys():
+            return data
+        else:
+            train_idx, valid_idx = train_test_split(
+                train_valid_idx.indices, test_size=0.25
+            )
+
+        data.valid_mask = torch.tensor(
+            masking_indexes(data=data, indexes=valid_idx), device=DEVICE
         )
-
-    def similarity_matrix_generation(
-        self, new_dataset: Dict, stat, func_name=FUNC_NAME
-    ):
-        logger.info("Start generating similarity matrix...")
-        stat_model = get_stat_methos(stat)
-        path_dir = EDGES / stat
-        self.make_directories(path_dir)
-        for file_name, data in new_dataset.items():
-            correlation_dictionary = defaultdict(list)
-            thr = chnage_connections_thr(file_name, stat)
-            func = self.select_generator(func_name, thr)
-            for ind_i, patient_1 in data.iterrows():
-                for ind_j, patient_2 in data.iterrows():
-                    if ind_i == ind_j:
-                        continue
-                    try:
-                        similarity_score = stat_model(
-                            patient_1.values, patient_2.values
-                        ).statistic
-                    except AttributeError:
-                        similarity_score = stat_model(
-                            patient_1.values, patient_2.values
-                        )[0]
-                    func(ind_i, ind_j, similarity_score, correlation_dictionary)
-            if func_name == "only_one_nx":
-                correlation_dictionary["directed"] = False
-                correlation_dictionary["multigraph"] = False
-                correlation_dictionary["graph"] = {}
-                with open(
-                    path_dir / f"similarity_{file_name}.pkl", "wb"
-                ) as pickle_file:
-                    pickle.dump(correlation_dictionary, pickle_file)
-            elif any(correlation_dictionary):
-                pd.DataFrame(
-                    correlation_dictionary.values(),
-                    columns=list(correlation_dictionary.items())[0][1].keys(),
-                ).to_pickle(path_dir / f"similarity_{file_name}.pkl")
-
-    def select_generator(self, func_name: str, thr: float):
-        factory = {
-            "only_one": self._similarity_only_one,
-            "zero_one": self._similarity_zero_one,
-            "only_one_nx": self._similarity_only_one_nx,
-        }
-        return partial(factory[func_name], thr)
-
-    def _similarity_only_one(
-        self,
-        thr: float,
-        ind_i: int,
-        ind_j: int,
-        similarity_score: float,
-        correlation_dictionary: Dict,
-    ):
-        if similarity_score > thr:
-            correlation_dictionary[f"{ind_i}_{ind_j}"] = {
-                "Patient_1": ind_i,
-                "Patient_2": ind_j,
-                "link": 1,
-                "Similarity Score": similarity_score,
-            }
-
-    def _similarity_zero_one(
-        self,
-        thr: float,
-        ind_i: int,
-        ind_j: int,
-        similarity_score: float,
-        correlation_dictionary: Dict,
-    ):
-        correlation_dictionary[f"{ind_i}_{ind_j}"] = {
-            "Patient_1": ind_i,
-            "Patient_2": ind_j,
-            "link": 1 if similarity_score > thr else 0,
-            "Similarity Score": similarity_score,
-        }
-
-    def _similarity_only_one_nx(
-        self,
-        thr: float,
-        ind_i: int,
-        ind_j: int,
-        similarity_score: float,
-        correlation_dictionary: Dict,
-    ):
-        if similarity_score > thr:
-            correlation_dictionary["nodes"].append({"id": ind_i})
-            correlation_dictionary["links"].append({"source": ind_i, "target": ind_j})
+        data.train_mask = torch.tensor(
+            masking_indexes(data=data, indexes=train_idx), device=DEVICE
+        )
+        try:
+            data.test_mask = torch.tensor(
+                masking_indexes(data=data, indexes=test_idx), device=DEVICE
+            )
+        except (KeyError, TypeError):
+            data.test_mask = torch.tensor(
+                masking_indexes(data=data, indexes=test_idx.indices), device=DEVICE
+            )
+        return data
 
     def len(self):
         pass

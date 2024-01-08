@@ -52,7 +52,11 @@ def combine_trails(base_path: str) -> List[List[int]]:
 
 logger.info("SUPREME is running..")
 
-BioDataset(root="data/sample_data/", file_name=os.listdir(f"{BASE_DATAPATH}/raw"))
+BioDataset(
+    root="data/sample_data/",
+    raw_directories=os.listdir(f"{BASE_DATAPATH}/raw"),
+    file_name=os.listdir(EDGES),
+)
 
 labels = pd.read_pickle(LABELS / os.listdir(LABELS)[0])
 if not os.path.exists(EMBEDDINGS):
