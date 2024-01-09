@@ -8,13 +8,14 @@ from typing import Optional
 
 import numpy as np
 import pandas as pd
+import ray
 import torch
 from helper import masking_indexes, pos_neg, random_split
 from learning_types import SelectModel
 from node_generation import node_feature_generation
 from pre_process_data import prepare_data, similarity_matrix_generation
 from set_logging import set_log_config
-from settings import (  # WALK_LENGHT,; WALK_PER_NODE,
+from settings import (
     BASE_DATAPATH,
     CONTEXT_SIZE,
     DATA,
@@ -28,6 +29,7 @@ from settings import (  # WALK_LENGHT,; WALK_PER_NODE,
     SPARSE,
     STAT_METHOD,
     WALK_LENGHT,
+    WALK_PER_NODE,
     P,
     Q,
 )
@@ -110,14 +112,17 @@ class BioDataset(Dataset):
         if feature_selections:
             sample_data = self.read_sample_data()
             labels = self.read_labels()
-            for feature_type in feature_selections:
-                node_feature_generation(
+            features_result_ray = [
+                node_feature_generation.remote(
                     new_dataset=sample_data,
                     labels=labels,
                     feature_type=feature_type,
                     path_features=PATH_FEATURES,
                     path_embeggings=PATH_EMBEDDIGS,
                 )
+                for feature_type in feature_selections
+            ]
+            ray.wait(features_result_ray)
 
     def run_similarity_matrix_generation(self):
         if osp.exists(EDGES) and sum(
@@ -125,13 +130,16 @@ class BioDataset(Dataset):
         ) == len(STAT_METHOD) * len(self.data_dir):
             return
         sample_data = self.read_sample_data()
-        for stat in STAT_METHOD:
-            similarity_matrix_generation(new_dataset=sample_data, stat=stat)
+        embedding_result_ray = [
+            similarity_matrix_generation.remote(new_dataset=sample_data, stat=stat)
+            for stat in STAT_METHOD
+        ]
+        ray.wait(embedding_result_ray)
 
     def read_sample_data(self):
         sample_data = defaultdict()
         for file in self.data_dir:
-            file_name = file.split("\\")[-1].split(".pkl")[0]
+            file_name = file.split("/")[-1].split(".pkl")[0]
             sample_data[file_name] = pd.read_pickle(file)
         return sample_data
 
@@ -235,7 +243,7 @@ class BioDataset(Dataset):
                 embedding_dim=EMBEDDING_DIM,
                 walk_length=WALK_LENGHT,
                 context_size=CONTEXT_SIZE,
-                walks_per_node=6,
+                walks_per_node=WALK_PER_NODE,
                 p=P,
                 q=Q,
                 sparse=SPARSE,

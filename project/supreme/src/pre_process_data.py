@@ -7,8 +7,7 @@ from typing import Dict
 
 import networkx as nx
 import pandas as pd
-
-# import ray
+import ray
 import torch
 from helper import (
     chnage_connections_thr,
@@ -64,7 +63,7 @@ def prepare_data(raw_paths, processed_dir):
             patient_id = data.columns
             data = data.T
             data.columns = hugo_symbol.values
-        file_name = file.split(".")[0].split("/")[-1].split("\\")[-1]
+        file_name = file.split(".")[0].split("/")[-1]
         if nan_checker(data):
             logger.info(f"Start preprocessing {file_name}")
             data = pre_processing(data)
@@ -119,7 +118,7 @@ def set_same_users(sample_data: Dict, users: Dict, labels: Dict) -> Dict:
     )
 
 
-# @ray.remote(num_cpus=os.cpu_count())
+@ray.remote(num_cpus=os.cpu_count())
 def similarity_matrix_generation(new_dataset: Dict, stat, func_name=FUNC_NAME):
     stat_model = get_stat_methos(stat)
     path_dir = EDGES / stat
