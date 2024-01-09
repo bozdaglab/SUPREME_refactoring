@@ -1,6 +1,5 @@
 import logging
 import os
-import sys
 import warnings
 from itertools import combinations
 from typing import List
@@ -14,11 +13,6 @@ from settings import BASE_DATAPATH, EMBEDDINGS, LABELS, LEARNING
 from train_mls import train_ml_model
 
 load_dotenv(find_dotenv())
-LIB = os.environ.get("LIB")
-PROJECT = os.environ.get("PROJECT")
-
-sys.path.append(LIB)
-sys.path.append(PROJECT)
 set_log_config()
 logger = logging.getLogger()
 warnings.filterwarnings("ignore", category=FutureWarning)

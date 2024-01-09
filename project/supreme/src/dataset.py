@@ -8,13 +8,12 @@ from typing import Optional
 
 import numpy as np
 import pandas as pd
-
-# import ray
+import ray
 import torch
 from helper import masking_indexes, pos_neg, random_split
 from learning_types import SelectModel
 from node_generation import node_feature_generation
-from pre_process_data import prepare_data, similarity_matrix_generation
+from pre_process_data import prepare_data, save_pickle, similarity_matrix_generation
 from set_logging import set_log_config
 from settings import (
     BASE_DATAPATH,
@@ -86,6 +85,7 @@ class BioDataset(Dataset):
         if not self.file_exist(files):
             self.run_prepare_data()
         self.data_dir = [osp.join(DATA, file) for file in os.listdir(DATA)]
+        ray.init(num_cpus=os.cpu_count())
         self.run_node_feature_generation()
         self.run_similarity_matrix_generation()
 
@@ -133,13 +133,16 @@ class BioDataset(Dataset):
         ) == len(STAT_METHOD) * len(self.data_dir):
             return
         sample_data = self.read_sample_data()
-        for stat in STAT_METHOD:
-            # embedding_result_ray = [
-            similarity_matrix_generation(new_dataset=sample_data, stat=stat)
-        #     for stat in STAT_METHOD
-        # ]
-        # ray.wait(embedding_result_ray)
-        # ray.get(embedding_result_ray)
+        embedding_result_ray_not_done = [
+            similarity_matrix_generation.remote(new_dataset=sample_data, stat=stat)
+            for stat in STAT_METHOD
+        ]
+        while embedding_result_ray_not_done:
+            embedding_result_ray_done, embedding_result_ray_not_done = ray.wait(
+                embedding_result_ray_not_done
+            )
+            final_result = ray.get(embedding_result_ray_done)
+            save_pickle(final_result=final_result)
 
     def read_sample_data(self):
         sample_data = defaultdict()

@@ -3,12 +3,12 @@ import os
 import pickle
 from collections import defaultdict
 from functools import partial
+from pathlib import Path
 from typing import Dict
 
 import networkx as nx
 import pandas as pd
-
-# import ray
+import ray
 import torch
 from helper import (
     chnage_connections_thr,
@@ -119,37 +119,68 @@ def set_same_users(sample_data: Dict, users: Dict, labels: Dict) -> Dict:
     )
 
 
-# @ray.remote(num_cpus=os.cpu_count())
+@ray.remote(num_cpus=os.cpu_count())
+def compute_similarity(
+    data, file_name, stat, func_name, stat_model, correlation_dictionary, path_dir
+):
+    logger.info(f"Start generating similarity matrix for {stat}, {file_name}...")
+    thr = chnage_connections_thr(file_name, stat)
+    func = select_generator(func_name, thr)
+    correlation_dictionary["final_path"] = path_dir / file_name
+    correlation_dictionary["func_name"] = func_name
+    for ind_i, patient_1 in data.iterrows():
+        for ind_j, patient_2 in data.iterrows():
+            if ind_i == ind_j:
+                continue
+            try:
+                similarity_score = stat_model(
+                    patient_1.values, patient_2.values
+                ).statistic
+            except AttributeError:
+                similarity_score = stat_model(patient_1.values, patient_2.values)[0]
+            func(ind_i, ind_j, similarity_score, correlation_dictionary)
+    return correlation_dictionary
+
+
+@ray.remote(num_cpus=os.cpu_count())
 def similarity_matrix_generation(new_dataset: Dict, stat, func_name=FUNC_NAME):
     stat_model = get_stat_methos(stat)
     path_dir = EDGES / stat
     make_directories(path_dir)
-    for file_name, data in new_dataset.items():
-        logger.info(f"Start generating similarity matrix for {stat}, {file_name}...")
-        correlation_dictionary = defaultdict(list)
-        thr = chnage_connections_thr(file_name, stat)
-        func = select_generator(func_name, thr)
-        for ind_i, patient_1 in data.iterrows():
-            for ind_j, patient_2 in data.iterrows():
-                if ind_i == ind_j:
-                    continue
-                try:
-                    similarity_score = stat_model(
-                        patient_1.values, patient_2.values
-                    ).statistic
-                except AttributeError:
-                    similarity_score = stat_model(patient_1.values, patient_2.values)[0]
-                func(ind_i, ind_j, similarity_score, correlation_dictionary)
+    correlation_dictionary = defaultdict(list)
+    result = [
+        compute_similarity.remote(
+            data,
+            file_name,
+            stat,
+            func_name,
+            stat_model,
+            correlation_dictionary,
+            path_dir,
+        )
+        for file_name, data in new_dataset.items()
+    ]
+    return ray.get(result)
+
+
+def save_pickle(final_result):
+    for result in final_result[0]:
+        func_name = result["func_name"]
+        path = Path(result["final_path"]).parts
+        file_name = path[-1]
+        path_dir = Path(*path[:-1])
+        result.pop("func_name")
+        result.pop("final_path")
         if func_name == "only_one_nx":
-            correlation_dictionary["directed"] = False
-            correlation_dictionary["multigraph"] = False
-            correlation_dictionary["graph"] = {}
+            result["directed"] = False
+            result["multigraph"] = False
+            result["graph"] = {}
             with open(path_dir / f"similarity_{file_name}.pkl", "wb") as pickle_file:
-                pickle.dump(correlation_dictionary, pickle_file)
-        elif any(correlation_dictionary):
+                pickle.dump(result, pickle_file)
+        elif any(result):
             pd.DataFrame(
-                correlation_dictionary.values(),
-                columns=list(correlation_dictionary.items())[0][1].keys(),
+                result.values(),
+                columns=list(result.items())[0][1].keys(),
             ).to_pickle(path_dir / f"similarity_{file_name}.pkl")
 
 
