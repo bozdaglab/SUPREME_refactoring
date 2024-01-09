@@ -1,25 +1,28 @@
 import logging
 import os
-import statistics
+
+# import statistics
+import tempfile
 from functools import partial
 from itertools import product
 from typing import Dict, Optional
 
 import numpy as np
 import pandas as pd
-import ray
+
+# import ray
 import torch
 from feature_selections import select_features
 from helper import row_col_ratio
 from learning_types import LearningTypes  # , SuperUnsuperModel
-from ray import tune
-from ray.train import report
+from ray import train, tune
+from ray.train import Checkpoint, report
 
 # from ray.air import session
 from ray.tune.schedulers import ASHAScheduler
 from selected_models import select_model, select_optimizer
 from set_logging import set_log_config
-from settings import (
+from settings import (  # X_TIME2,
     EMBEDDINGS,
     GRAPH_DATA,
     LEARNING,
@@ -29,7 +32,6 @@ from settings import (
     OPTIONAL_FEATURE_SELECTION,
     PATIENCE,
     UNSUPERVISED_MODELS,
-    X_TIME2,
 )
 from torch import Tensor
 
@@ -52,7 +54,7 @@ scheduler = ASHAScheduler(
 )
 
 
-@ray.remote(num_cpus=os.cpu_count())
+# @ray.remote(num_cpus=os.cpu_count())
 def node_feature_generation(
     new_dataset: Dict,
     labels: Dict,
@@ -144,7 +146,7 @@ def node_embedding_generation() -> None:
                 if list_dir and name_ in list_dir:
                     continue
 
-                tune.run(
+                result = tune.run(
                     partial(
                         train_steps,
                         data_generation_types=data_gen_types,
@@ -157,9 +159,11 @@ def node_embedding_generation() -> None:
                     num_samples=10,
                     scheduler=scheduler,
                 )
-                # best_trial = result.get_best_trial("loss", "min", "last")
-                # print(f"Best trial config: {best_trial.config}")
-                # print(f"Best trial final validation loss: {best_trial.last_result['loss']}")
+                best_trial = result.get_best_trial("loss", "min", "last")
+                print(f"Best trial config: {best_trial.config}")
+                print(
+                    f"Best trial final validation loss: {best_trial.last_result['loss']}"
+                )
                 # print(f"Best trial final validation accuracy: {best_trial.last_result['accuracy']}")
 
                 # train_steps(
@@ -249,6 +253,7 @@ def train_steps(
     # else:
     #     metric_1 = "auc"
     #     metric_2 = "ap"
+    # for hidden_size, lr in product(HIDDEN_SIZE, LEARNING_RATE):
     model = select_model(
         in_size=in_size,
         hid_size=config["hidden_size"],
@@ -259,56 +264,54 @@ def train_steps(
     optimizer = select_optimizer(
         optimizer_type=OPTIM, model=model, learning_rate=config["lr"]
     )  # add OPTIM to the actual function
-    # checkpoint = session.get_checkpoint()
+    checkpoint = train.get_checkpoint()
 
-    # if checkpoint:
-    #     checkpoint_state = checkpoint.to_dict()
-    #     # start_epoch = checkpoint_state["epoch"]
-    #     model.load_state_dict(checkpoint_state["net_state_dict"])
-    #     optimizer.load_state_dict(checkpoint_state["optimizer_state_dict"])
-    # else:
-    #     start_epoch = 0
-    for _ in range(X_TIME2):
-        patience_count = 0
-        for epoch in range(MAX_EPOCHS):
-            loss, emb = model.train(optimizer, data)
-            # val_loss = model.validate(data=data)
+    if checkpoint:
+        with checkpoint.as_directory() as checkpoint_dir:
+            checkpoint_dict = torch.load(os.path.join(checkpoint_dir, "checkpoint.pt"))
+            epoch = checkpoint_dict["epoch"] + 1
+            model.load_state_dict(checkpoint_dict["model_state_dict"])
 
-            # logger.info(
-            #     f"Number: {x_times}, epoch: {epoch}, train_loss: {loss},
-            # {metric_1}: {auc}, {metric_2}: {ap}",
-            # )
-            if loss < min_valid_loss:  # and auc > model_accuracy:
-                # model_accuracy = auc
-                min_valid_loss = loss
-                patience_count = 0
-                this_emb = emb
-            else:
-                patience_count += 1
-            if epoch >= MIN_EPOCHS and patience_count >= PATIENCE:
-                break
+    for epoch in range(MAX_EPOCHS):
+        loss, emb = model.train(optimizer, data)
+        # val_loss = model.validate(data=data)
 
-        # checkpoint_data = {
-        #     "epoch": epoch,
-        #     # "net_state_dict": model.state_dict(),
-        #     # "optimizer_state_dict": optimizer.state_dict(),
-        # }
-        # checkpoint = Checkpoint.from_directory(checkpoint_data)
+        # logger.info(
+        #     f"Number: {x_times}, epoch: {epoch}, train_loss: {loss},
+        # {metric_1}: {auc}, {metric_2}: {ap}",
+        # )
+        if loss < min_valid_loss:  # and auc > model_accuracy:
+            # model_accuracy = auc
+            min_valid_loss = loss
+            patience_count = 0
+            this_emb = emb
+        else:
+            patience_count += 1
+        if epoch >= MIN_EPOCHS and patience_count >= PATIENCE:
+            break
+        metrics = {
+            "loss": min_valid_loss,
+        }
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            torch.save(
+                {
+                    "epoch": epoch,
+                    "embeddings": this_emb,
+                    "model_state_dict": model.model.state_dict(),
+                },
+                os.path.join(tmp_dir, "checkpoint.pt"),
+            )
+            report(
+                metrics=metrics,
+                checkpoint=Checkpoint.from_directory(tmp_dir),
+            )
 
-        report(
-            {
-                "loss": min_valid_loss,
-                # "accuracy": auc,
-                # "embeddings": this_emb,
-            },
-            # checkpoint=checkpoint,
-        )
+    # av_valid_losses.append(min_valid_loss)
 
-    av_valid_losses.append(min_valid_loss)
-
-    av_valid_loss = round(statistics.median(av_valid_losses), 3)
-    if av_valid_loss < best_ValidLoss:
-        best_ValidLoss = av_valid_loss
-        selected_emb = this_emb
-        selected_emb = selected_emb.detach()
-    pd.DataFrame(selected_emb).to_pickle(f"{name}")
+    # av_valid_loss = round(statistics.median(av_valid_losses), 3)
+    # if av_valid_loss < best_ValidLoss:
+    #     best_ValidLoss = av_valid_loss
+    #     selected_emb = this_emb
+    #     selected_emb = selected_emb.detach()
+    # logger.info(f"Ready to save {name} embeddings ....")
+    # pd.DataFrame(selected_emb).to_pickle(f"{name}")
