@@ -83,7 +83,7 @@ def get_ml_result(
     y_test: Optional[pd.DataFrame] = None,
 ):
 
-    model = ml_model.train_ml_model_factory()
+    model = ml_model.train_classifier()
     results = defaultdict(list)
     for _ in range(X_TIME2):
         ml_model.get_result(model=model, results=results, X_test=X_test, y_test=y_test)

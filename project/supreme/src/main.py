@@ -46,7 +46,7 @@ BioDataset(
 
 node_embedding_generation()
 
-labels = pd.read_pickle(LABELS / os.listdir(LABELS)[0])
+labels = pd.read_pickle(LABELS / os.listdir(LABELS)[0])["CLAUDIN_SUBTYPE"]
 logger.info("SUPREME is integrating the embeddings..")
 for ml_type in LEARNING:
     dir = EMBEDDINGS / ml_type

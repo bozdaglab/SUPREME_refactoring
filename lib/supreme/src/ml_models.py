@@ -357,7 +357,7 @@ class ClusteringModels:
 
     def AFP(self):
         param = {
-            "damping": np.arange(0.1, 0.8, 0.1),
+            "damping": np.arange(0.5, 0.8, 0.1),
             "affinity": ["precomputed", "euclidean"],
         }
 
@@ -408,11 +408,11 @@ class ClusteringModels:
         agc = AgglomerativeClustering(
             n_clusters=5, affinity="euclidean", linkage="ward"
         )
-        return agc.fit(self.x_train), "Add_best_later"
+        return agc.fit(self.x_train)
 
     def MS(self):
         """Add TuneSearchCV later"""
-        return MeanShift().fit(self.x_train), "Add_best_later"
+        return MeanShift().fit(self.x_train)
 
     def SPC(self):
-        return SpectralClustering(n_clusters=5).fit(self.x_train), "Add_best_later"
+        return SpectralClustering(n_clusters=5).fit(self.x_train)
