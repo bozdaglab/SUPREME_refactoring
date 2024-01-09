@@ -22,6 +22,7 @@ from sklearn.metrics import (
     completeness_score,
     f1_score,
     homogeneity_score,
+    make_scorer,
     silhouette_score,
     v_measure_score,
 )
@@ -164,10 +165,11 @@ class MLModels:
         return search.best_estimator
 
     def RF(self):
-        max_depth = [int(x) for x in np.linspace(50, 300, num=50)]
-        max_depth.append(None)
+        # max_depth = [int(x) for x in np.linspace(50, 300, num=50)]
+        # max_depth.append(None)
         params = {
-            "n_estimators": [int(x) for x in np.linspace(start=50, stop=400, num=50)]
+            "max_depth": [int(x) for x in np.linspace(50, 300, num=50)]
+            # "n_estimators": [int(x) for x in np.linspace(start=50, stop=400, num=50)]
         }
         search = TuneSearchCV(
             estimator=RandomForestClassifier(),
@@ -175,8 +177,9 @@ class MLModels:
             scoring="f1_macro",
             param_distributions=params,
             cv=4,
-            n_iter=X_TIME,
+            n_trials=X_TIME,
             search_optimization="optuna",
+            n_jobs=-1,
             early_stopping=True,
             verbose=0,
         )
@@ -315,8 +318,8 @@ class ClusteringModels:
             KMeans(),
             param_distributions=params,
             cv=4,
-            n_iter=X_TIME,
-            scoring=silhouette_score,
+            n_trials=X_TIME,
+            scoring=make_scorer(silhouette_score),
             verbose=0,
         )
 
@@ -331,7 +334,7 @@ class ClusteringModels:
         # )
 
         # return kmeans_model.fit(self.x_train), search
-        return search.best_estimator
+        return search.best_estimator_
         # best_k = 7
         # sil_score = 0.0
         # for n_clusters in [7, 8, 9]:
@@ -354,7 +357,7 @@ class ClusteringModels:
 
     def AFP(self):
         param = {
-            "damping": np.arange(0.1, 0.8, 0.1),
+            "damping": np.arange(0.5, 0.8, 0.1),
             "affinity": ["precomputed", "euclidean"],
         }
 
@@ -405,11 +408,11 @@ class ClusteringModels:
         agc = AgglomerativeClustering(
             n_clusters=5, affinity="euclidean", linkage="ward"
         )
-        return agc.fit(self.x_train), "Add_best_later"
+        return agc.fit(self.x_train)
 
     def MS(self):
         """Add TuneSearchCV later"""
-        return MeanShift().fit(self.x_train), "Add_best_later"
+        return MeanShift().fit(self.x_train)
 
     def SPC(self):
-        return SpectralClustering(n_clusters=5).fit(self.x_train), "Add_best_later"
+        return SpectralClustering(n_clusters=5).fit(self.x_train)

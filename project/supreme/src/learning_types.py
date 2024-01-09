@@ -33,3 +33,4 @@ class SuperUnsuperModel(Enum):
     discriminator = auto()
     linkprediction = auto()
     encoderinproduct = auto()
+    entireinput = auto()

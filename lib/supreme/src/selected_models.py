@@ -4,6 +4,8 @@ from typing import Optional, Union
 import numpy as np
 import pandas as pd
 import torch
+
+# from dataset import process_data
 from helper import masking_indexes, pos_neg, random_split
 from learning_types import LearningTypes, OptimizerType, SelectModel, SuperUnsuperModel
 from module import (
@@ -20,6 +22,7 @@ from settings import (  # WALK_LENGHT,; WALK_PER_NODE,
     CONTEXT_SIZE,
     EMBEDDING_DIM,
     SPARSE,
+    WALK_LENGHT,
     P,
     Q,
 )
@@ -85,6 +88,7 @@ class GCNSupervised:
             labels=self.labels,
         )
 
+    # move it into the model class
     def model_loss_output(self, model_choice: str) -> int:
         if model_choice == LearningTypes.regression.name:
             out_size = 1
@@ -119,7 +123,7 @@ class GCNUnsupervised:
         train_valid_idx, test_idx = random_split(new_x=self.new_x)
         if isinstance(edge_index, dict):
             edge_index = pd.DataFrame(edge_index).T
-
+        # edge_index = process_data(edge_index=edge_index)
         # use index to mask inorder to generate the val, test, and train
         # index_to_mask (e.g, index_to_mask(train_index, size=y.size(0)))
         data = make_data(new_x=self.new_x, edge_index=edge_index)
@@ -127,7 +131,7 @@ class GCNUnsupervised:
             node2vec = Node2Vec(
                 edge_index=data.edge_index,
                 embedding_dim=EMBEDDING_DIM,
-                walk_length=round(edge_index.shape[0] * 0.002),
+                walk_length=WALK_LENGHT,
                 context_size=CONTEXT_SIZE,
                 walks_per_node=6,
                 p=P,
@@ -137,13 +141,17 @@ class GCNUnsupervised:
             pos, neg = node2vec.sample([10, 15])  # batch size
             data.pos_edge_labels = torch.tensor(pos.T, device=DEVICE).long()
             data.neg_edge_labels = torch.tensor(neg.T, device=DEVICE).long()
-        elif data_generation_types == SelectModel.similarity_based.name:
-            data.pos_edge_labels = pos_neg(edge_index, "link", 1)
-            data.neg_edge_labels = pos_neg(edge_index, "link", 0)
+        # elif data_generation_types == SelectModel.similarity_based.name:
+        #     data.pos_edge_labels = pos_neg(edge_index, "link", 1)
+        #     data.neg_edge_labels = pos_neg(edge_index, "link", 0)
         elif data_generation_types == SelectModel.train_test.name:
             data.num_nodes = maybe_num_nodes(data.edge_index)
+            edge_index = data.edge_index
+            edge_attr = data.edge_attr
             data = train_test_split_edges(data=data)
-        elif data_generation_types == "else":
+            data.edge_index = edge_index
+            data.edge_attr = edge_attr
+        elif data_generation_types == SelectModel.similarity_based.name:
             data.pos_edge_labels = pos_neg(edge_index, "link", 1)
             data.neg_edge_labels = negative_sampling(
                 data.pos_edge_labels, self.new_x.size(0)
@@ -180,7 +188,7 @@ def make_data(new_x: Tensor, edge_index: pd.DataFrame) -> Data:
             device=DEVICE,
         ).long(),
         edge_attr=torch.tensor(
-            edge_index[edge_index.columns[2]].transpose().values,
+            edge_index[edge_index.columns[3]].transpose().values,
             device=DEVICE,
         ).float(),
     )
@@ -233,6 +241,8 @@ def train_test_valid(
                 valid_idx = np.array(train_valid_idx)[valid_part]
             break
 
+    elif "val_pos_edge_index" in data.keys():
+        return data
     else:
         train_idx, valid_idx = train_test_split(train_valid_idx.indices, test_size=0.25)
 
@@ -300,7 +310,7 @@ def select_optimizer(
     elif isinstance(model, EncoderInnerProduct):
         return torch.optim.Adam(model.encoder.parameters(), lr=learning_rate)
 
-    elif isinstance(model, EncoderEntireInput):
+    if isinstance(model, EncoderEntireInput):
         losses = namedtuple("losses", ["encoder_loss", "decoder_loss"])
         encoder_loss = torch.optim.Adam(model.encoder.parameters(), lr=learning_rate)
         decoder_loss = torch.optim.Adam(model.decoder.parameters(), lr=learning_rate)
@@ -365,7 +375,7 @@ def select_model(
         elif super_unsuper_model == SuperUnsuperModel.encoderinproduct.name:
             encoder = SUPREME(in_size=in_size, hid_size=hid_size, out_size=out_size)
             return EncoderInnerProduct(encoder=encoder)
-        else:
+        elif super_unsuper_model == SuperUnsuperModel.entireinput.name:
             encoder = SUPREME(in_size=in_size, hid_size=hid_size, out_size=out_size)
             decoder = Discriminator(
                 in_size=in_size, hid_size=hid_size, out_size=out_size

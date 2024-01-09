@@ -6,6 +6,7 @@ hyperopt
 lightgbm
 mlxtend
 numpy==1.23.3
+optuna
 pandas==1.5.3
 pathlib
 pre-commit==2.15.0
