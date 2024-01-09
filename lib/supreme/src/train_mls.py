@@ -6,6 +6,7 @@ from typing import Dict, List, Optional, Union
 import numpy as np
 import pandas as pd
 import torch
+from helper import random_split
 from learning_types import LearningTypes
 from ml_models import ClusteringModels, MLModels
 from node_generation import add_row_features
@@ -15,7 +16,6 @@ from settings import (
     INT_MOTHOD_CLUSTERING,
     X_TIME2,
 )
-from torch import Tensor
 
 DEVICE = torch.device("cpu")
 
@@ -25,8 +25,6 @@ def train_ml_model(
     trial_combs: List[List[int]],
     trials: int,
     labels: pd.DataFrame,
-    train_valid_idx: Tensor,
-    test_idx: Tensor,
     dir_name: str,
 ):
     files = os.listdir(dir_name)
@@ -48,7 +46,7 @@ def train_ml_model(
                 )
     if ADD_RAW_FEAT is True:
         emb = add_row_features(emb=emb)
-
+    train_valid_idx, test_idx = random_split(emb)
     X_train = emb[train_valid_idx.indices].numpy()
     X_test = emb[test_idx.indices].numpy()
     try:

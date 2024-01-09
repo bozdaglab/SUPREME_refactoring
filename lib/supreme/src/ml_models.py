@@ -22,6 +22,7 @@ from sklearn.metrics import (
     completeness_score,
     f1_score,
     homogeneity_score,
+    make_scorer,
     silhouette_score,
     v_measure_score,
 )
@@ -317,8 +318,8 @@ class ClusteringModels:
             KMeans(),
             param_distributions=params,
             cv=4,
-            n_iter=X_TIME,
-            scoring=silhouette_score,
+            n_trials=X_TIME,
+            scoring=make_scorer(silhouette_score),
             verbose=0,
         )
 
@@ -333,7 +334,7 @@ class ClusteringModels:
         # )
 
         # return kmeans_model.fit(self.x_train), search
-        return search.best_estimator
+        return search.best_estimator_
         # best_k = 7
         # sil_score = 0.0
         # for n_clusters in [7, 8, 9]:

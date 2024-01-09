@@ -72,17 +72,17 @@ class BioDataset(Dataset):
 
     @property
     def processed_file_names(self):
-        return self.file_name
+        return self.raw_directories
 
     def download(self):
         pass
 
     def _pre_process_run(self, root):
         self.root = root
-        files = [file.replace(".txt", ".pkl") for file in self.raw_directories]
+        files = [file.replace(".txt", ".pkl") for file in self.file_name]
         if not self.file_exist(files):
             self.run_prepare_data()
-        self.data_dir = [DATA / file for file in os.listdir(DATA)]
+        self.data_dir = [osp.join(DATA, file) for file in os.listdir(DATA)]
         self.run_node_feature_generation()
         self.run_similarity_matrix_generation()
 
@@ -93,7 +93,9 @@ class BioDataset(Dataset):
         prepare_data(self.raw_paths, DATA)
 
     def run_node_feature_generation(self):
-        if len(SELECTION_METHOD) == len(os.listdir(PATH_FEATURES)):
+        if osp.exists(PATH_FEATURES) and len(SELECTION_METHOD) == len(
+            os.listdir(PATH_FEATURES)
+        ):
             return
         feature_selections = SELECTION_METHOD
         if osp.exists(PATH_FEATURES):
@@ -109,7 +111,7 @@ class BioDataset(Dataset):
             sample_data = self.read_sample_data()
             labels = self.read_labels()
             for feature_type in feature_selections:
-                node_feature_generation.remote(
+                node_feature_generation(
                     new_dataset=sample_data,
                     labels=labels,
                     feature_type=feature_type,
@@ -118,18 +120,19 @@ class BioDataset(Dataset):
                 )
 
     def run_similarity_matrix_generation(self):
-        if sum([len(files) for _, _, files in os.walk(BASE_DATAPATH / EDGES)]) == len(
-            STAT_METHOD
-        ) * len(self.data_dir):
+        if osp.exists(EDGES) and sum(
+            [len(files) for _, _, files in os.walk(BASE_DATAPATH / EDGES)]
+        ) == len(STAT_METHOD) * len(self.data_dir):
             return
         sample_data = self.read_sample_data()
         for stat in STAT_METHOD:
-            similarity_matrix_generation.remote(new_dataset=sample_data, stat=stat)
+            similarity_matrix_generation(new_dataset=sample_data, stat=stat)
 
     def read_sample_data(self):
         sample_data = defaultdict()
         for file in self.data_dir:
-            sample_data[file] = pd.read_pickle(file)
+            file_name = file.split("\\")[-1].split(".pkl")[0]
+            sample_data[file_name] = pd.read_pickle(file)
         return sample_data
 
     def read_labels(self):
@@ -141,20 +144,17 @@ class BioDataset(Dataset):
         for stat, feature_type in product(
             os.listdir(EDGES), os.listdir(PATH_EMBEDDIGS)
         ):
+            folder_path = f"{stat}_{feature_type.split('_')[1].split('.')[0]}"
             new_x = pd.read_pickle(PATH_EMBEDDIGS / feature_type)
             if isinstance(new_x, pd.DataFrame):
                 new_x = torch.tensor(new_x.values, dtype=torch.float32)
             for file in os.listdir(EDGES / stat):
-                dir = os.path.join(
-                    self.processed_dir,
-                    stat,
-                    feature_type.split("_")[1].split(".")[0],
-                    file.split(".")[0],
+                file_path = f"{folder_path}_{file.split('.')[0]}"
+                dir = os.path.join(self.processed_dir, "graph_data", folder_path)
+                edge_index = pd.read_pickle(EDGES / stat / file)
+                generator(
+                    new_x=new_x, edge_index=edge_index, dir=dir, file_path=file_path
                 )
-                if not os.path.exists(dir):
-                    os.makedirs(dir)
-                    edge_index = pd.read_pickle(EDGES / stat / file)
-                    generator(new_x=new_x, edge_index=edge_index, dir=dir)
 
     def data_generator_selector(self, labels):
         if self.loader:
@@ -162,16 +162,19 @@ class BioDataset(Dataset):
         else:
             return partial(self.create_without_loader, labels=None)
 
-    def create_without_loader(self, new_x, edge_index, dir, labels=None):
+    def create_without_loader(self, new_x, edge_index, dir, file_path, labels=None):
         for data_generation_types in POS_NEG_MODELS:
             data = self.create_data(
                 new_x=new_x,
                 data_generation_types=data_generation_types,
                 edge_index=edge_index,
             )
-            torch.save(data, osp.join(dir, f"{data_generation_types}.pt"))
+            dir_update = f"{dir}_{data_generation_types}"
+            if not os.path.exists(dir_update):
+                os.makedirs(dir_update)
+            torch.save(data, osp.join(dir_update, f"{file_path}.pt"))
 
-    def create_with_loader(self, new_x, labels, edge_index, dir):
+    def create_with_loader(self, new_x, labels, edge_index, dir, file_path):
         graphs = []
         for idx, patient in enumerate(new_x):
             node_features = patient
