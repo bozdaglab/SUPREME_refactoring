@@ -1,41 +1,33 @@
 import logging
 import os
-import statistics
+
+# import statistics
 from functools import partial
 from itertools import product
-from typing import Dict, Optional, Union
+from typing import Dict, Optional
 
 import numpy as np
 import pandas as pd
 import ray
 import torch
-
-# from feature_selections import select_features
-from helper import nan_checker, row_col_ratio
-from learning_types import LearningTypes
-from pre_processings import pre_processing
-from ray import tune
-from ray.air import Checkpoint, session
+from feature_selections import select_features
+from helper import row_col_ratio
+from learning_types import LearningTypes  # SuperUnsuperModel
+from ray import train, tune
+from ray.train import report
 from ray.tune.schedulers import ASHAScheduler
-from selected_models import (
-    GCNSupervised,
-    GCNUnsupervised,
-    load_model,
-    select_model,
-    select_optimizer,
-)
+from selected_models import select_model, select_optimizer
 from set_logging import set_log_config
-from settings import (  # HIDDEN_SIZE,; LEARNING_RATE,
+from settings import (  # X_TIME2,
     EMBEDDINGS,
+    GRAPH_DATA,
     LEARNING,
     MAX_EPOCHS,
     MIN_EPOCHS,
     OPTIM,
     OPTIONAL_FEATURE_SELECTION,
     PATIENCE,
-    POS_NEG_MODELS,
     UNSUPERVISED_MODELS,
-    X_TIME2,
 )
 from torch import Tensor
 
@@ -45,8 +37,8 @@ DEVICE = torch.device("cpu")
 
 
 config = {
-    "hidden_size": tune.choice([2**i for i in range(4, 9)]),
-    "lr": tune.loguniform(1e-4, 1e-1),
+    "hidden_size": tune.choice([2**i for i in range(4, 5)]),
+    "lr": tune.loguniform(1e-4, 1e-3),
     # "batch_size": tune.choice([2, 4, 8, 16])
 }
 scheduler = ASHAScheduler(
@@ -80,21 +72,19 @@ def node_feature_generation(
         Concatenated features from different omics file
     """
     is_first = True
-    # selected_features = []
+    selected_features = []
     for _, feat in new_dataset.items():
         if row_col_ratio(feat):
-            if nan_checker(feat):
-                feat = pre_processing(feat)
             # add an inner remote function and use get to get the result of the inner one before proceding
-            # feat, final_features = select_features(
-            #     application_train=feat, labels=labels, feature_type=feature_type
-            # )
-            # selected_features.extend(final_features)
+            feat, final_features = select_features(
+                application_train=feat, labels=labels, feature_type=feature_type
+            )
+            selected_features.extend(final_features)
             if not any(feat):
                 continue
             values = torch.tensor(feat.values, device=DEVICE)
         else:
-            # selected_features.extend(feat.columns)
+            selected_features.extend(feat.columns)
             values = feat.values
         if is_first:
             new_x = torch.tensor(values, device=DEVICE).float()
@@ -103,23 +93,17 @@ def node_feature_generation(
             new_x = torch.cat(
                 (new_x, torch.tensor(values, device=DEVICE).float()), dim=1
             )
-    # if not os.path.exists(path_features):
-    #     os.makedirs(path_features)
-    # pd.DataFrame(selected_features).to_pickle(
-    #     path_features / f"selected_features_{feature_type}.pkl"
-    # )
+    if not os.path.exists(path_features):
+        os.makedirs(path_features)
+    pd.DataFrame(selected_features).to_pickle(
+        path_features / f"selected_features_{feature_type}.pkl"
+    )
     if not os.path.exists(path_embeggings):
         os.makedirs(path_embeggings)
     pd.DataFrame(new_x).to_pickle(path_embeggings / f"embeddings_{feature_type}.pkl")
 
 
-def node_embedding_generation(
-    stat: str,
-    new_x: Tensor,
-    labels: Optional[pd.DataFrame],
-    final_correlation: Dict,
-    feature_type: Optional[str] = None,
-) -> None:
+def node_embedding_generation() -> None:
     """
     This function loads edges, turns SUPREME to supervised or unsupervised
     and generates embeddings for each omic
@@ -134,79 +118,63 @@ def node_embedding_generation(
     Return:
         Generate embeddings for each omic
     """
-
+    ready_data = [
+        os.path.join(direc, file)
+        for direc, _, files in os.walk(GRAPH_DATA)
+        if files
+        for file in files
+    ]
     for model_choice in LEARNING:
-        emb_path = EMBEDDINGS / model_choice / stat
-        if not os.path.exists(emb_path):
-            os.makedirs(emb_path)
-        # embeddings_file = os.listdir(emb_path)
-        # if embeddings_file:
-        #     for name in embeddings_file:
-        #         path_dir = f"{emb_path}/{name}"
-        #         for plk_file in os.listdir(path_dir):
-        #             embeddings[name].append(pd.read_pickle(f"{path_dir}/{plk_file}"))
-        #     return embeddings
-        if isinstance(feature_type, list):
-            feature_type = "_".join(feature_type)
-        learning_model = load_model(new_x=new_x, labels=labels, model=model_choice)
-        for name, edge_index in final_correlation.items():
-            if model_choice == LearningTypes.clustering.name:
-                for data_gen_types, unsupervised_model in product(
-                    POS_NEG_MODELS, UNSUPERVISED_MODELS
-                ):
-                    dir_path = f"{emb_path}/{data_gen_types}_{unsupervised_model}/{feature_type}"
-                    if not os.path.exists(dir_path):
-                        os.makedirs(dir_path)
-                    list_dir = os.listdir(dir_path)
-                    name_ = f"{name}.pkl"
-                    name_dir = f"{dir_path}/{name_}"
-                    if list_dir and name_ in list_dir:
-                        continue
+        emb_path = EMBEDDINGS / model_choice
+        if model_choice == LearningTypes.clustering.name:
+            for data_gen_types, unsupervised_model in product(
+                ready_data, UNSUPERVISED_MODELS
+            ):
+                base_path = data_gen_types.split("graph_data/")[1]
+                folder_path, file_path = base_path.split("/")
+                name = f"{folder_path}_{unsupervised_model}"
+                final_path = emb_path / name
+                if not os.path.exists(final_path):
+                    os.makedirs(final_path)
+                list_dir = os.listdir(final_path)
+                name_ = file_path.replace(".pt", ".pkl")
+                name_dir = f"{final_path}/{name_}"
+                if list_dir and name_ in list_dir:
+                    continue
 
-                    tune.run(
-                        partial(
-                            train_steps,
-                            data_generation_types=data_gen_types,
-                            learning_model=learning_model,
-                            edge_index=edge_index,
-                            name=name_dir,
-                            model_choice=model_choice,
-                            super_unsuper_model=unsupervised_model,
-                        ),
-                        resources_per_trial={"cpu": 2, "gpu": 0},
-                        config=config,
-                        num_samples=10,
-                        scheduler=scheduler,
-                    )
-                    # train_steps(
-                    #     data_generation_types=data_gen_types,
-                    # learning_model=learning_model,
-                    # edge_index=edge_index,
-                    # name=name_dir,
-                    # model_choice=model_choice,
-                    # super_unsuper_model=unsupervised_model,
-                    # )
-            else:
-                tune.run(
+                result = tune.run(
                     partial(
                         train_steps,
-                        learning_model=learning_model,
-                        edge_index=edge_index,
-                        name=name,
+                        data_generation_types=data_gen_types,
                         model_choice=model_choice,
+                        super_unsuper_model=unsupervised_model,
                     ),
-                    resources_per_trial={"cpu": os.cpu_count(), "gpu": 0},
+                    resources_per_trial={"cpu": 5, "gpu": 0},
                     config=config,
                     num_samples=10,
                     scheduler=scheduler,
                 )
-                # train_steps(
-                #     config=config,
-                #     learning_model=learning_model,
-                #     edge_index=edge_index,
-                #     name=name,
-                #     model_choice=model_choice,
-                # )
+                best_trial = result.get_best_trial("loss", "min", "avg")
+                logger.info(f"Best trial config: {best_trial.config}")
+                logger.info(
+                    f"Best trial final validation loss: {best_trial.last_result['loss']}"
+                )
+                selected_emb = torch.from_numpy(best_trial.last_result["embeddings"])
+                logger.info(f"Ready to save {name} embeddings ....")
+                pd.DataFrame(selected_emb).to_pickle(f"{name_dir}")
+
+        else:
+            tune.run(
+                partial(
+                    train_steps,
+                    name=name,
+                    model_choice=model_choice,
+                ),
+                resources_per_trial={"cpu": os.cpu_count(), "gpu": 0},
+                config=config,
+                num_samples=10,
+                scheduler=scheduler,
+            )
 
 
 def add_row_features(emb: Tensor, is_first: bool = True) -> Tensor:
@@ -246,9 +214,6 @@ def add_row_features(emb: Tensor, is_first: bool = True) -> Tensor:
 
 def train_steps(
     config: Dict,
-    learning_model: Union[GCNUnsupervised, GCNSupervised],
-    edge_index: pd.DataFrame,
-    name: str,
     model_choice: str,
     data_generation_types: Optional[str] = None,
     super_unsuper_model: Optional[str] = None,
@@ -258,73 +223,66 @@ def train_steps(
     """
     if not super_unsuper_model:
         super_unsuper_model = model_choice
-    data = learning_model.prepare_data(
-        data_generation_types=data_generation_types, edge_index=edge_index
-    )
-    best_ValidLoss = np.Inf
-    out_size = learning_model.model_loss_output(model_choice=model_choice)
+    data = torch.load(data_generation_types)
+    # best_ValidLoss = np.Inf
+    out_size = 32  # learning_model.model_loss_output(model_choice=model_choice)
     in_size = data.x.shape[1]
-
-    # for learning_rate, hid_size in product(LEARNING_RATE, HIDDEN_SIZE):
+    min_valid_loss = np.Inf
+    this_emb = None
+    # model_accuracy = 0
+    # if super_unsuper_model == SuperUnsuperModel.entireinput.name:
+    #     metric_1 = "r2_square"
+    #     metric_2 = "mean_square_error"
+    # else:
+    #     metric_1 = "auc"
+    #     metric_2 = "ap"
     model = select_model(
         in_size=in_size,
         hid_size=config["hidden_size"],
         out_size=out_size,
-        super_unsuper_model=model_choice,
+        super_unsuper_model=super_unsuper_model,
     )
-    av_valid_losses = []
+    # av_valid_losses = []
     optimizer = select_optimizer(
         optimizer_type=OPTIM, model=model, learning_rate=config["lr"]
     )  # add OPTIM to the actual function
-    checkpoint = session.get_checkpoint()
+    checkpoint = train.get_checkpoint()
 
     if checkpoint:
-        checkpoint_state = checkpoint.to_dict()
-        # start_epoch = checkpoint_state["epoch"]
-        model.load_state_dict(checkpoint_state["net_state_dict"])
-        optimizer.load_state_dict(checkpoint_state["optimizer_state_dict"])
-    # else:
-    #     start_epoch = 0
-    for x_times in range(X_TIME2):
-        min_valid_loss = np.Inf
-        this_emb = None
-        patience_count = 0
-        for epoch in range(MAX_EPOCHS):
-            logger.info(
-                f"Number of times: {x_times}, model: {model}, optimizer: {optimizer}"
-            )
-            model.train(optimizer, data)
-            this_valid_loss, emb = model.validate(data=data)
-            if this_valid_loss < min_valid_loss:
-                min_valid_loss = this_valid_loss
-                patience_count = 0
-                this_emb = emb
-            else:
-                patience_count += 1
-            if epoch >= MIN_EPOCHS and patience_count >= PATIENCE:
-                break
+        with checkpoint.as_directory() as checkpoint_dir:
+            checkpoint_dict = torch.load(os.path.join(checkpoint_dir, "checkpoint.pt"))
+            epoch = checkpoint_dict["epoch"] + 1
+            # model.load_state_dict(checkpoint_dict["model_state_dict"])
 
-            checkpoint_data = {
-                "epoch": epoch,
-                "net_state_dict": model.state_dict(),
-                "optimizer_state_dict": optimizer.state_dict(),
-            }
-            checkpoint = Checkpoint.from_dict(checkpoint_data)
+    for epoch in range(MAX_EPOCHS):
+        loss, emb = model.train(optimizer, data)
+        val_loss = model.validate(data=data)
 
-            session.report(
-                {
-                    "loss": min_valid_loss,
-                    "accuracy": min_valid_loss,
-                    "embeddings": this_emb,
-                },
-                checkpoint=checkpoint,
-            )
+        logger.info(
+            f"Epoch: {epoch}, train_loss: {loss}, val_loss: {val_loss}",
+        )
+        if loss < min_valid_loss:  # and auc > model_accuracy:
+            # model_accuracy = auc
+            min_valid_loss = loss
+            patience_count = 0
+            this_emb = emb
+        else:
+            patience_count += 1
+        if epoch >= MIN_EPOCHS and patience_count >= PATIENCE:
+            break
+        metrics = {
+            "loss": min_valid_loss,
+            "epoch": epoch,
+            "embeddings": this_emb.detach().cpu().numpy(),
+        }
+        report(
+            metrics=metrics,
+        )
 
-        av_valid_losses.append(min_valid_loss.item())
+    # av_valid_losses.append(min_valid_loss)
 
-    print("Finished Training")
-    av_valid_loss = round(statistics.median(av_valid_losses), 3)
-    if av_valid_loss < best_ValidLoss:
-        best_ValidLoss = av_valid_loss
-        selected_emb = this_emb
-    pd.DataFrame(selected_emb).to_pickle(f"{name}")
+    # av_valid_loss = round(statistics.median(av_valid_losses), 3)
+    # if av_valid_loss < best_ValidLoss:
+    #     best_ValidLoss = av_valid_loss
+    #     selected_emb = this_emb
+    #     selected_emb = selected_emb.detach()

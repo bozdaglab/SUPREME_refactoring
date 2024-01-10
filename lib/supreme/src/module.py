@@ -2,11 +2,18 @@
 
 import logging
 
+# import numpy as np
 import torch
 import torch.nn.functional as F
 from dotenv import find_dotenv, load_dotenv
 from learning_types import LearningTypes
 from set_logging import set_log_config
+from sklearn.metrics import (
+    average_precision_score,
+    # mean_squared_error,
+    # r2_score,
+    roc_auc_score,
+)
 from torch.nn import Linear, Module
 from torch_geometric.data import Data
 from torch_geometric.nn import ARGVA, GAE, GCNConv
@@ -51,9 +58,9 @@ class SUPREME(Module):
 
         if self.activ_func == "relu":
             active_func = F.relu
-        if self.activ_func == "sigmoid":
+        elif self.activ_func == "sigmoid":
             active_func = F.sigmoid
-        if self.activ_func == "tanh":
+        elif self.activ_func == "tanh":
             active_func = F.tanh
 
         x = active_func(x_emb)
@@ -84,9 +91,9 @@ class Encoder(Module):
 class Discriminator(Module):
     def __init__(self, in_size: int, hid_size: int, out_size: int):
         super().__init__()
-        self.lin1 = Linear(in_size, hid_size)
+        self.lin1 = Linear(out_size, hid_size)
         self.lin2 = Linear(hid_size, hid_size)
-        self.lin3 = Linear(hid_size, out_size)
+        self.lin3 = Linear(hid_size, in_size)
 
     def forward(self, x):
         x = self.lin1(x).relu()
@@ -123,29 +130,78 @@ class SupremeClusteringLink:
     def __init__(self, model: SUPREME) -> None:
         self.model = model
         self.criterion_link = torch.nn.BCEWithLogitsLoss()
+        # self.Q = 10  # defines the number of negative samples
 
     def train(self, optimizer: torch.optim, data: Data):
         # GraphSAGE predict adjacency matrix https://arxiv.org/abs/1706.02216
         self.model.train()
         optimizer.zero_grad()
         emb, _ = self.model(data)
-        h_src = emb[data.edge_index[0]]
-        h_dst = emb[data.edge_index[1]]
-        link_pred = (h_src * h_dst).sum(dim=-1)
-        loss = self.criterion_link(link_pred, data.edge_attr)
+        if "neg_edge_labels" in data.keys():
+            pos_data = data.pos_edge_labels
+            neg_data = data.neg_edge_labels
+        else:
+            pos_data = data.test_pos_edge_index
+            neg_data = data.test_neg_edge_index
+
+        src_pos = pos_data[0]
+        dst_pos = pos_data[1]
+        src_neg = neg_data[0]
+        dst_neg = neg_data[1]
+        link_pred_p = (emb[src_pos] * emb[dst_pos]).sum(dim=-1)
+        edge_label_p = torch.ones(src_pos.size(0))
+        link_pred_n = (emb[src_neg] * emb[dst_neg]).sum(dim=-1)
+        edge_label_n = torch.zeros(src_neg.size(0))
+        link_pred = torch.cat((link_pred_p, link_pred_n), dim=0)
+        edge_label = torch.cat((edge_label_p, edge_label_n), dim=0)
+        loss = self.criterion_link(link_pred, edge_label)
+        # this can be an alternative
+        # node_score = []
+        # for pos_node in src_pos:
+        #     list_pos_node = np.where(src_pos == pos_node)
+        #     pos_score = F.cosine_similarity(
+        #         emb[data.pos_edge_labels[0][list_pos_node]],
+        #         emb[data.pos_edge_labels[1][list_pos_node]],
+        #     )
+        #     link_pred_pos = torch.log(torch.sigmoid(pos_score))
+
+        #     list_neg_node = np.where(src_neg == pos_node)
+        #     neg_score = F.cosine_similarity(
+        #         emb[data.neg_edge_labels[0][list_neg_node]],
+        #         emb[data.neg_edge_labels[1][list_neg_node]],
+        #     )
+        #     link_pred_neg = self.Q * torch.mean(torch.log(torch.sigmoid(-neg_score)))
+        #     loss = torch.mean(-link_pred_pos - link_pred_neg).view(1, -1)
+        #     if not bool(loss.isnan()): # take care of nan values
+        #         node_score.append(loss)
+        # loss = torch.mean(torch.cat(node_score, 0))
         loss.backward()
         optimizer.step()
+        if not isinstance(loss, float):
+            return float(loss), emb
         return loss
 
     @torch.no_grad()
     def validate(self, data: Data):
         self.model.eval()
         emb, _ = self.model(data)
-        h_src = emb[data.edge_index[0]]
-        h_dst = emb[data.edge_index[1]]
-        link_pred = (h_src * h_dst).sum(dim=-1)
-        loss = self.criterion_link(link_pred, data.edge_attr)
-        return loss, emb
+        if "neg_edge_labels" in data.keys():
+            pos_data = data.pos_edge_labels
+            neg_data = data.neg_edge_labels
+        else:
+            pos_data = data.test_pos_edge_index
+            neg_data = data.test_neg_edge_index
+        pos_y = emb.new_ones(pos_data.size(1))
+        neg_y = emb.new_zeros(neg_data.size(1))
+        y = torch.cat([pos_y, neg_y], dim=0)
+
+        pos_pred = (emb[pos_data[0]] * emb[pos_data[1]]).sum(dim=-1)
+        neg_pred = (emb[neg_data[0]] * emb[neg_data[1]]).sum(dim=-1)
+        pred = torch.cat([pos_pred, neg_pred], dim=0)
+        loss = self.criterion_link(y, pred)
+        # y, pred = y.detach().cpu().numpy(), pred.detach().cpu().numpy()
+        # return roc_auc_score(y, pred), average_precision_score(y, pred), float(loss)
+        return float(loss)
 
 
 class EncoderDecoder:
@@ -166,19 +222,23 @@ class EncoderDecoder:
             discriminator_loss.backward()
             optimizer.decoder_loss.step()
         if "neg_edge_labels" in data.keys():
+            pos_data = data.pos_edge_labels
+            neg_data = data.neg_edge_labels
             loss = self.model.recon_loss(
                 z=emb,
-                pos_edge_index=data.pos_edge_labels,
-                neg_edge_index=data.neg_edge_labels,
+                pos_edge_index=pos_data,
+                neg_edge_index=neg_data,
             )
         else:
-            loss = self.model.recon_loss(z=emb, pos_edge_index=data.pos_edge_labels)
+            pos_data = data.test_pos_edge_index
+            neg_data = data.test_neg_edge_index
+            loss = self.model.recon_loss(z=emb, pos_edge_index=pos_data)
         loss = loss + self.model.reg_loss(emb)
         loss = loss + (1 / data.num_nodes) * self.model.kl_loss()
         loss.backward()
         optimizer.encoder_loss.step()
         if not isinstance(loss, float):
-            return float(loss)
+            return float(loss), emb
         return loss
 
     @torch.no_grad()
@@ -189,22 +249,27 @@ class EncoderDecoder:
         criterion = torch.nn.BCEWithLogitsLoss()
         self.model.eval()
         emb = self.model.encode(data)
-
-        pos_y = emb.new_ones(data.pos_edge_labels.size(1))
-        neg_y = emb.new_zeros(data.neg_edge_labels.size(1))
+        if "neg_edge_labels" in data.keys():
+            pos_data = data.pos_edge_labels
+            neg_data = data.neg_edge_labels
+        else:
+            pos_data = data.test_pos_edge_index
+            neg_data = data.test_neg_edge_index
+        pos_y = emb.new_ones(pos_data.size(1))
+        neg_y = emb.new_zeros(neg_data.size(1))
         y = torch.cat([pos_y, neg_y], dim=0)
 
-        pos_pred = torch.sigmoid(
-            (emb[data.pos_edge_labels[0]] * emb[data.pos_edge_labels[1]]).sum(dim=1)
-        )
-        neg_pred = torch.sigmoid(
-            (emb[data.neg_edge_labels[0]] * emb[data.neg_edge_labels[1]]).sum(dim=1)
-        )
+        pos_pred = torch.sigmoid((emb[pos_data[0]] * emb[pos_data[1]]).sum(dim=1))
+        neg_pred = torch.sigmoid((emb[neg_data[0]] * emb[neg_data[1]]).sum(dim=1))
         pred = torch.cat([pos_pred, neg_pred], dim=0)
-        return criterion(y, pred), emb
+        loss = criterion(y, pred)
+        # y, pred = y.detach().cpu().numpy(), pred.detach().cpu().numpy()
+        # return roc_auc_score(y, pred), average_precision_score(y, pred), loss
+        return float(loss)
 
 
 class EncoderInnerProduct:
+    # predict the link between two nodes. Actuallu predict the adjacency matrix
     def __init__(self, encoder: SUPREME):
         self.encoder = encoder
         self.model = GAE(encoder=self.encoder)
@@ -221,26 +286,37 @@ class EncoderInnerProduct:
                 neg_edge_index=data.neg_edge_labels,
             )
         else:
-            loss = self.model.recon_loss(z=emb, pos_edge_index=data.pos_edge_labels)
+            loss = self.model.recon_loss(
+                z=emb, pos_edge_index=data.train_pos_edge_index
+            )
         loss.backward()
         optimizer.step()
         if not isinstance(loss, float):
-            return float(loss)
-        return loss
+            return float(loss), emb
+        return loss, emb
 
     @torch.no_grad()
     def validate(self, data: Data):
+
         self.model.eval()
         emb, _ = self.model.encode(data)
-        pos_y = emb.new_ones(data.pos_edge_labels.size(1))
-        neg_y = emb.new_zeros(data.neg_edge_labels.size(1))
+        if "neg_edge_labels" in data.keys():
+            pos_data = data.pos_edge_labels
+            neg_data = data.neg_edge_labels
+        else:
+            pos_data = data.test_pos_edge_index
+            neg_data = data.test_neg_edge_index
+        pos_y = emb.new_ones(pos_data.size(1))
+        neg_y = emb.new_zeros(neg_data.size(1))
         y = torch.cat([pos_y, neg_y], dim=0)
 
-        pos_pred = self.model.decoder(emb, data.pos_edge_labels, sigmoid=True)
-        neg_pred = self.model.decoder(emb, data.neg_edge_labels, sigmoid=True)
+        pos_pred = self.model.decoder(emb, pos_data, sigmoid=True)
+        neg_pred = self.model.decoder(emb, neg_data, sigmoid=True)
         pred = torch.cat([pos_pred, neg_pred], dim=0)
         loss = self.criterion(y, pred)
-        return loss, emb
+        # y, pred = y.detach().cpu().numpy(), pred.detach().cpu().numpy()
+        # return roc_auc_score(y, pred), average_precision_score(y, pred),
+        return float(loss)
 
 
 class EncoderEntireInput:
@@ -252,36 +328,23 @@ class EncoderEntireInput:
     def train(self, optimizer: torch.optim, data: Data):
         self.encoder.train()
         optimizer.encoder_loss.zero_grad()
-
         emb, _ = self.encoder(data)
-
-        # Positive loss.
-        pos_rw = data.pos_edge_labels
-        start, rest = pos_rw[:, 0], pos_rw[:, 1:].contiguous()
-        out = self.compute(emb, start, rest, pos_rw)
-        pos_loss = -torch.log(torch.sigmoid(out) + EPS).mean()
-
-        # Negative loss.
-        neg_rw = data.neg_edge_labels
-        start, rest = neg_rw[:, 0], neg_rw[:, 1:].contiguous()
-        out = self.compute(emb, start, rest, pos_rw)
-        neg_loss = -torch.log(1 - torch.sigmoid(out) + EPS).mean()
-        loss = pos_loss + neg_loss  # maybe get the average loss
+        out_emb = self.decoder(emb)
+        loss = self.criterion(out_emb, data.x)
         loss.backward()
         optimizer.encoder_loss.step()
+        if not isinstance(loss, float):
+            return float(loss), emb
         return loss
-
-    def compute(self, emb, start, rest, rw):
-        h_start = emb[start].view(rw.size(0), 1, emb.size(1))
-        h_rest = emb[rest.view(-1)].view(rw.size(0), -1, emb.size(1))
-        return (h_start * h_rest).sum(dim=-1).view(-1)
 
     @torch.no_grad()
     def validate(self, data: Data):
         self.encoder.eval()
         emb, _ = self.encoder(data)
         dec_out = self.decoder(emb)
-        return self.criterion(dec_out, data.x), emb
+        loss = self.criterion(dec_out, data.x)
+        # return r2_score(dec_out, data.x), mean_squared_error(dec_out, data.x), loss
+        return float(loss)
 
 
 # # mask some edges and used those as negative values
@@ -309,3 +372,73 @@ class EncoderEntireInput:
 #         "classification": SupremeClassification,
 #         "discriminator":
 #     }
+
+
+""""""
+
+
+class example:
+    def __init__(self, encoder: SUPREME, decoder: Discriminator):
+        self.encoder = encoder
+        self.decoder = decoder
+        self.criterion = torch.nn.MSELoss()
+
+    def train(self, optimizer: torch.optim, data: Data):
+        self.encoder.train()
+        optimizer.encoder_loss.zero_grad()
+
+        emb, _ = self.encoder(data)
+
+        if "neg_edge_labels" in data.keys():
+            pos_rw = data.pos_edge_labels
+            neg_rw = data.neg_edge_labels
+        else:
+            pos_rw = data.test_pos_edge_index
+            neg_rw = data.test_neg_edge_index
+
+        # reconstruction loss
+
+        # Positive loss.
+        start, rest = pos_rw[:, 0], pos_rw[:, 1:].contiguous()
+        out = self.compute(emb, start, rest, pos_rw)
+        pos_loss = -torch.log(torch.sigmoid(out) + EPS).mean()
+
+        # Negative loss.
+        start, rest = neg_rw[:, 0], neg_rw[:, 1:].contiguous()
+        out = self.compute(emb, start, rest, pos_rw)
+        neg_loss = -torch.log(1 - torch.sigmoid(out) + EPS).mean()
+        loss = pos_loss + neg_loss  # maybe get the average loss
+
+        loss.backward()
+        optimizer.encoder_loss.step()
+        if not isinstance(loss, float):
+            return float(loss), emb
+        return loss
+
+    def compute(self, emb, start, rest, rw):
+        h_start = emb[start].view(rw.size(0), 1, emb.size(1))
+        h_rest = emb[rest.view(-1)].view(rw.size(0), -1, emb.size(1))
+        return (h_start * h_rest).sum(dim=-1).view(-1)
+
+    @torch.no_grad()
+    def validate(self, data: Data):
+        self.encoder.eval()
+        emb, _ = self.encoder(data)
+        dec_out = self.decoder(emb)
+        loss = self.criterion(dec_out, data.x), emb
+        if "neg_edge_labels" in data.keys():
+            pos_data = data.pos_edge_labels
+            neg_data = data.neg_edge_labels
+        else:
+            pos_data = data.test_pos_edge_index
+            neg_data = data.test_neg_edge_index
+        pos_y = emb.new_ones(pos_data.size(1))
+        neg_y = emb.new_zeros(neg_data.size(1))
+        y = torch.cat([pos_y, neg_y], dim=0)
+
+        pos_pred = self.decoder(emb, pos_data, sigmoid=True)
+        neg_pred = self.decoder(emb, neg_data, sigmoid=True)
+        pred = torch.cat([pos_pred, neg_pred], dim=0)
+        loss = self.criterion(y, pred)
+        y, pred = y.detach().cpu().numpy(), pred.detach().cpu().numpy()
+        return roc_auc_score(y, pred), average_precision_score(y, pred), loss

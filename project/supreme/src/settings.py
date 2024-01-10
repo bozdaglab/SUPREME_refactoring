@@ -77,10 +77,12 @@ X_TIME2 = int(os.environ.get("X_TIME2"))
 MAX_EPOCHS = int(os.environ.get("MAX_EPOCHS"))
 MIN_EPOCHS = int(os.environ.get("MIN_EPOCHS"))
 PATIENCE = int(os.environ.get("PATIENCE"))
-
+GRAPH_DATA = BASE_DATAPATH / "processed" / "graph_data"
 FEATURE_NETWORKS_INTEGRATION = [
     i for i in os.listdir(BASE_DATAPATH) if i.endswith(".csv")
 ]
+PATH_FEATURES = DATA.parent / "selected_features"
+PATH_EMBEDDIGS = DATA.parent / "selected_features_embeddings"
 
 NODE_NETWORKS = FEATURE_NETWORKS_INTEGRATION.copy()
 
