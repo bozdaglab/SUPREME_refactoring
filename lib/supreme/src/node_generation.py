@@ -2,23 +2,19 @@ import logging
 import os
 
 # import statistics
-import tempfile
 from functools import partial
 from itertools import product
 from typing import Dict, Optional
 
 import numpy as np
 import pandas as pd
-
-# import ray
+import ray
 import torch
 from feature_selections import select_features
 from helper import row_col_ratio
-from learning_types import LearningTypes  # , SuperUnsuperModel
+from learning_types import LearningTypes  # SuperUnsuperModel
 from ray import train, tune
-from ray.train import Checkpoint, report
-
-# from ray.air import session
+from ray.train import report
 from ray.tune.schedulers import ASHAScheduler
 from selected_models import select_model, select_optimizer
 from set_logging import set_log_config
@@ -54,7 +50,7 @@ scheduler = ASHAScheduler(
 )
 
 
-# @ray.remote(num_cpus=os.cpu_count())
+@ray.remote(num_cpus=os.cpu_count())
 def node_feature_generation(
     new_dataset: Dict,
     labels: Dict,
@@ -150,7 +146,6 @@ def node_embedding_generation() -> None:
                     partial(
                         train_steps,
                         data_generation_types=data_gen_types,
-                        name=name_dir,
                         model_choice=model_choice,
                         super_unsuper_model=unsupervised_model,
                     ),
@@ -159,19 +154,15 @@ def node_embedding_generation() -> None:
                     num_samples=10,
                     scheduler=scheduler,
                 )
-                best_trial = result.get_best_trial("loss", "min", "last")
-                print(f"Best trial config: {best_trial.config}")
-                print(
+                best_trial = result.get_best_trial("loss", "min", "avg")
+                logger.info(f"Best trial config: {best_trial.config}")
+                logger.info(
                     f"Best trial final validation loss: {best_trial.last_result['loss']}"
                 )
-                # print(f"Best trial final validation accuracy: {best_trial.last_result['accuracy']}")
+                selected_emb = torch.from_numpy(best_trial.last_result["embeddings"])
+                logger.info(f"Ready to save {name} embeddings ....")
+                pd.DataFrame(selected_emb).to_pickle(f"{name_dir}")
 
-                # train_steps(
-                #     data_generation_types=data_gen_types,
-                #     name=name_dir,
-                #     model_choice=model_choice,
-                #     super_unsuper_model=unsupervised_model,
-                # )
         else:
             tune.run(
                 partial(
@@ -184,13 +175,6 @@ def node_embedding_generation() -> None:
                 num_samples=10,
                 scheduler=scheduler,
             )
-            # train_steps(
-            #     config=config,
-            #     learning_model=learning_model,
-            #     edge_index=edge_index,
-            #     name=name,
-            #     model_choice=model_choice,
-            # )
 
 
 def add_row_features(emb: Tensor, is_first: bool = True) -> Tensor:
@@ -230,7 +214,6 @@ def add_row_features(emb: Tensor, is_first: bool = True) -> Tensor:
 
 def train_steps(
     config: Dict,
-    name: str,
     model_choice: str,
     data_generation_types: Optional[str] = None,
     super_unsuper_model: Optional[str] = None,
@@ -241,7 +224,7 @@ def train_steps(
     if not super_unsuper_model:
         super_unsuper_model = model_choice
     data = torch.load(data_generation_types)
-    best_ValidLoss = np.Inf
+    # best_ValidLoss = np.Inf
     out_size = 32  # learning_model.model_loss_output(model_choice=model_choice)
     in_size = data.x.shape[1]
     min_valid_loss = np.Inf
@@ -253,14 +236,13 @@ def train_steps(
     # else:
     #     metric_1 = "auc"
     #     metric_2 = "ap"
-    # for hidden_size, lr in product(HIDDEN_SIZE, LEARNING_RATE):
     model = select_model(
         in_size=in_size,
         hid_size=config["hidden_size"],
         out_size=out_size,
         super_unsuper_model=super_unsuper_model,
     )
-    av_valid_losses = []
+    # av_valid_losses = []
     optimizer = select_optimizer(
         optimizer_type=OPTIM, model=model, learning_rate=config["lr"]
     )  # add OPTIM to the actual function
@@ -270,16 +252,15 @@ def train_steps(
         with checkpoint.as_directory() as checkpoint_dir:
             checkpoint_dict = torch.load(os.path.join(checkpoint_dir, "checkpoint.pt"))
             epoch = checkpoint_dict["epoch"] + 1
-            model.load_state_dict(checkpoint_dict["model_state_dict"])
+            # model.load_state_dict(checkpoint_dict["model_state_dict"])
 
     for epoch in range(MAX_EPOCHS):
         loss, emb = model.train(optimizer, data)
-        # val_loss = model.validate(data=data)
+        val_loss = model.validate(data=data)
 
-        # logger.info(
-        #     f"Number: {x_times}, epoch: {epoch}, train_loss: {loss},
-        # {metric_1}: {auc}, {metric_2}: {ap}",
-        # )
+        logger.info(
+            f"Epoch: {epoch}, train_loss: {loss}, val_loss: {val_loss}",
+        )
         if loss < min_valid_loss:  # and auc > model_accuracy:
             # model_accuracy = auc
             min_valid_loss = loss
@@ -291,20 +272,12 @@ def train_steps(
             break
         metrics = {
             "loss": min_valid_loss,
+            "epoch": epoch,
+            "embeddings": this_emb.detach().cpu().numpy(),
         }
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            torch.save(
-                {
-                    "epoch": epoch,
-                    "embeddings": this_emb,
-                    "model_state_dict": model.model.state_dict(),
-                },
-                os.path.join(tmp_dir, "checkpoint.pt"),
-            )
-            report(
-                metrics=metrics,
-                checkpoint=Checkpoint.from_directory(tmp_dir),
-            )
+        report(
+            metrics=metrics,
+        )
 
     # av_valid_losses.append(min_valid_loss)
 
@@ -313,5 +286,3 @@ def train_steps(
     #     best_ValidLoss = av_valid_loss
     #     selected_emb = this_emb
     #     selected_emb = selected_emb.detach()
-    # logger.info(f"Ready to save {name} embeddings ....")
-    # pd.DataFrame(selected_emb).to_pickle(f"{name}")
