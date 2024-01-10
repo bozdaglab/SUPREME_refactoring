@@ -4,7 +4,7 @@ import pickle
 from collections import defaultdict
 from functools import partial
 from pathlib import Path
-from typing import Dict
+from typing import Dict, List, Tuple, Union
 
 import networkx as nx
 import pandas as pd
@@ -18,6 +18,7 @@ from helper import (
 )
 from networkx.readwrite import json_graph
 from pre_processings import pre_processing
+from scipy.stats import pearsonr, spearmanr
 from set_logging import set_log_config
 from settings import EDGES, LABELS
 from sklearn.preprocessing import LabelEncoder
@@ -35,7 +36,7 @@ def process_data(edge_index: Dict):
     return edge_index
 
 
-def prepare_data(raw_paths, processed_dir):
+def prepare_data(raw_paths: List[str], processed_dir: Path) -> Tuple:
     sample_data = defaultdict()
     labels = ""
     users = defaultdict()
@@ -77,7 +78,7 @@ def prepare_data(raw_paths, processed_dir):
     return sample_data, labels
 
 
-def save_file(sample_data, labels, processed_dir):
+def save_file(sample_data: Dict, labels: pd.DataFrame, processed_dir: Path) -> None:
     logger.info("Save file in a pickle format...")
     for name, featuers in sample_data.items():
         featuers.to_pickle(f"{processed_dir}/{name}.pkl")
@@ -86,17 +87,17 @@ def save_file(sample_data, labels, processed_dir):
     labels.to_pickle(f"{LABELS}/labels.pkl")
 
 
-def make_directory(dir_name):
+def make_directory(dir_name: Path) -> None:
     if not os.path.exists(dir_name):
         os.mkdir(dir_name)
 
 
-def make_directories(dir_name):
+def make_directories(dir_name: Path) -> None:
     if not os.path.exists(dir_name):
         os.makedirs(dir_name)
 
 
-def save_folder(file, processed_dir):
+def save_folder(file: str, processed_dir: Path) -> Path:
     to_save_folder = processed_dir
     if "edges_" in file:
         to_save_folder = EDGES
@@ -121,8 +122,14 @@ def set_same_users(sample_data: Dict, users: Dict, labels: Dict) -> Dict:
 
 @ray.remote(num_cpus=os.cpu_count())
 def compute_similarity(
-    data, file_name, stat, func_name, stat_model, correlation_dictionary, path_dir
-):
+    data: pd.DataFrame,
+    file_name: str,
+    stat: str,
+    func_name: str,
+    stat_model: Union[pearsonr, spearmanr],
+    correlation_dictionary: Dict,
+    path_dir: Path,
+) -> Dict:
     logger.info(f"Start generating similarity matrix for {stat}, {file_name}...")
     thr = chnage_connections_thr(file_name, stat)
     func = select_generator(func_name, thr)
@@ -163,8 +170,8 @@ def similarity_matrix_generation(new_dataset: Dict, stat, func_name=FUNC_NAME):
     return ray.get(result)
 
 
-def save_pickle(final_result):
-    for result in final_result[0]:
+def save_pickle(final_result: List[Dict]) -> None:
+    for result in final_result:
         func_name = result["func_name"]
         path = Path(result["final_path"]).parts
         file_name = path[-1]
@@ -182,15 +189,6 @@ def save_pickle(final_result):
                 result.values(),
                 columns=list(result.items())[0][1].keys(),
             ).to_pickle(path_dir / f"similarity_{file_name}.pkl")
-
-
-def select_generator(func_name: str, thr: float):
-    factory = {
-        "only_one": _similarity_only_one,
-        "zero_one": _similarity_zero_one,
-        "only_one_nx": _similarity_only_one_nx,
-    }
-    return partial(factory[func_name], thr)
 
 
 def _similarity_only_one(
@@ -234,3 +232,14 @@ def _similarity_only_one_nx(
     if similarity_score > thr:
         correlation_dictionary["nodes"].append({"id": ind_i})
         correlation_dictionary["links"].append({"source": ind_i, "target": ind_j})
+
+
+def select_generator(
+    func_name: str, thr: float
+) -> Union[_similarity_only_one, _similarity_zero_one, _similarity_only_one_nx]:
+    factory = {
+        "only_one": _similarity_only_one,
+        "zero_one": _similarity_zero_one,
+        "only_one_nx": _similarity_only_one_nx,
+    }
+    return partial(factory[func_name], thr)

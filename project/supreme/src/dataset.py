@@ -4,13 +4,13 @@ import os.path as osp
 from collections import defaultdict
 from functools import partial
 from itertools import product
-from typing import Optional
+from typing import Dict, List, Optional
 
 import numpy as np
 import pandas as pd
 import ray
 import torch
-from helper import masking_indexes, pos_neg, random_split
+from helper import masking_indexes, pos_neg, random_split, read_labels
 from learning_types import SelectModel
 from node_generation import node_feature_generation
 from pre_process_data import prepare_data, save_pickle, similarity_matrix_generation
@@ -21,7 +21,6 @@ from settings import (
     DATA,
     EDGES,
     EMBEDDING_DIM,
-    LABELS,
     PATH_EMBEDDIGS,
     PATH_FEATURES,
     POS_NEG_MODELS,
@@ -58,8 +57,8 @@ class BioDataset(Dataset):
     def __init__(
         self,
         root: str,
-        file_name: str,
-        raw_directories: str,
+        file_name: List[str],
+        raw_directories: List[str],
         loader: bool = False,
     ):
         self.file_name = file_name
@@ -79,7 +78,7 @@ class BioDataset(Dataset):
     def download(self):
         pass
 
-    def _pre_process_run(self, root):
+    def _pre_process_run(self, root: str) -> None:
         self.root = root
         files = [file.replace(".txt", ".pkl") for file in self.file_name]
         if not self.file_exist(files):
@@ -89,10 +88,10 @@ class BioDataset(Dataset):
         self.run_node_feature_generation()
         self.run_similarity_matrix_generation()
 
-    def file_exist(self, files):
+    def file_exist(self, files: List[str]) -> bool:
         return len(files) != 0 and all([osp.exists(DATA / file) for file in files])
 
-    def run_prepare_data(self):
+    def run_prepare_data(self) -> None:
         prepare_data(self.raw_paths, DATA)
 
     def run_node_feature_generation(self):
@@ -112,20 +111,23 @@ class BioDataset(Dataset):
                 feature_selections = None
         if feature_selections:
             sample_data = self.read_sample_data()
-            labels = self.read_labels()
-            for feature_type in feature_selections:
-                # features_result_ray = [
-                node_feature_generation(
+            labels = read_labels()
+            features_result_ray_not_done = [
+                node_feature_generation.remote(
                     new_dataset=sample_data,
                     labels=labels,
                     feature_type=feature_type,
                     path_features=PATH_FEATURES,
                     path_embeggings=PATH_EMBEDDIGS,
                 )
-            #     for feature_type in feature_selections
-            # ]
-            # ray.wait(features_result_ray)
-            # ray.get(features_result_ray)
+                for feature_type in feature_selections
+            ]
+            while features_result_ray_not_done:
+                features_result_ray_done, features_result_ray_not_done = ray.wait(
+                    features_result_ray_not_done
+                )
+            final_result_features_selections = ray.get(features_result_ray_done)
+            save_pickle(final_result=final_result_features_selections[0])
 
     def run_similarity_matrix_generation(self):
         if osp.exists(EDGES) and sum(
@@ -141,21 +143,18 @@ class BioDataset(Dataset):
             embedding_result_ray_done, embedding_result_ray_not_done = ray.wait(
                 embedding_result_ray_not_done
             )
-            final_result = ray.get(embedding_result_ray_done)
-            save_pickle(final_result=final_result)
+            final_result_emb = ray.get(embedding_result_ray_done)
+            save_pickle(final_result=final_result_emb[0])
 
-    def read_sample_data(self):
+    def read_sample_data(self) -> Dict:
         sample_data = defaultdict()
         for file in self.data_dir:
             file_name = file.split("/")[-1].split(".pkl")[0]
             sample_data[file_name] = pd.read_pickle(file)
         return sample_data
 
-    def read_labels(self):
-        return pd.read_pickle(LABELS / os.listdir(LABELS)[0])
-
     def process(self):
-        labels = self.read_labels()
+        labels = read_labels()
         generator = self.data_generator_selector(labels)
         for stat, feature_type in product(
             os.listdir(EDGES), os.listdir(PATH_EMBEDDIGS)

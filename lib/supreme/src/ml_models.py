@@ -55,7 +55,7 @@ class MLModels:
         except ValueError:
             raise Exception
 
-    def train_classifier(self) -> Tuple:
+    def train_classifier(self):
         """
         Train a classifier
 
