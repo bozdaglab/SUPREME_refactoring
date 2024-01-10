@@ -15,6 +15,7 @@ from helper import row_col_ratio
 from learning_types import LearningTypes  # SuperUnsuperModel
 from ray import train, tune
 from ray.train import report
+from ray.tune.analysis.experiment_analysis import ExperimentAnalysis
 from ray.tune.schedulers import ASHAScheduler
 from selected_models import select_model, select_optimizer
 from set_logging import set_log_config
@@ -217,7 +218,7 @@ def train_steps(
     model_choice: str,
     data_generation_types: Optional[str] = None,
     super_unsuper_model: Optional[str] = None,
-):
+) -> ExperimentAnalysis:
     """
     This function craete the loss funciton, train and validate the model
     """

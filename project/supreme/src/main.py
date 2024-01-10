@@ -4,12 +4,12 @@ import warnings
 from itertools import combinations
 from typing import List
 
-import pandas as pd
 from dataset import BioDataset
 from dotenv import find_dotenv, load_dotenv
+from helper import read_labels
 from node_generation import node_embedding_generation
 from set_logging import set_log_config
-from settings import BASE_DATAPATH, EMBEDDINGS, LABELS, LEARNING
+from settings import BASE_DATAPATH, EMBEDDINGS, LEARNING
 from train_mls import train_ml_model
 
 load_dotenv(find_dotenv())
@@ -40,7 +40,7 @@ BioDataset(
 
 node_embedding_generation()
 
-labels = pd.read_pickle(LABELS / os.listdir(LABELS)[0])["CLAUDIN_SUBTYPE"]
+labels = read_labels()
 logger.info("SUPREME is integrating the embeddings..")
 for ml_type in LEARNING:
     dir = EMBEDDINGS / ml_type

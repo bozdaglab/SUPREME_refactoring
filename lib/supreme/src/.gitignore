@@ -1,9 +1,0 @@
-env/
-*.R
-*.csv
-*.pkl
-.vscode/
-*.pyc
-.env
-*/lib.egg-info*
-*.egg-info*

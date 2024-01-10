@@ -26,7 +26,7 @@ def train_ml_model(
     trials: int,
     labels: pd.DataFrame,
     dir_name: str,
-):
+) -> Dict:
     files = os.listdir(dir_name)
     NODE_NETWORKS2 = [files[i] for i in trial_combs[trials]]
     if len(NODE_NETWORKS2) == 1:
@@ -81,7 +81,7 @@ def get_ml_result(
     ml_model: Union[ClusteringModels, MLModels],
     X_test: Optional[pd.DataFrame] = None,
     y_test: Optional[pd.DataFrame] = None,
-):
+) -> Dict:
 
     model = ml_model.train_classifier()
     results = defaultdict(list)

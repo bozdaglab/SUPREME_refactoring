@@ -1,6 +1,7 @@
+import os
 from collections import Counter
 from itertools import repeat
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Union
 
 import numpy as np
 import pandas as pd
@@ -13,7 +14,7 @@ from learning_types import FeatureSelectionType
 # from genetic_selection import GeneticSelectionCV
 from mlxtend.feature_selection import SequentialFeatureSelector
 from scipy.stats import pearsonr, spearmanr
-from settings import CNA, METHYLATION_P, METHYLATION_S, MICRO
+from settings import CNA, LABELS, METHYLATION_P, METHYLATION_S, MICRO
 from sklearn.feature_selection import RFE, SelectFromModel
 from torch import Tensor
 from torch_geometric.utils import coalesce, remove_self_loops
@@ -33,6 +34,10 @@ def chnage_connections_thr(file_name: str, stat: str, thr: float = 0.60) -> floa
     elif "similarity_data_cna" in file_name:
         thr = CNA
     return thr
+
+
+def read_labels() -> pd.DataFrame:
+    return pd.read_pickle(LABELS / os.listdir(LABELS)[0])["CLAUDIN_SUBTYPE"]
 
 
 def search_dictionary(methods_features: Dict, thr: int = 2) -> List[str]:
@@ -108,7 +113,7 @@ def select_boruta(X: pd.DataFrame, y: pd.DataFrame) -> pd.DataFrame:
     return X[X.columns[boruta.support_]]
 
 
-def get_stat_methos(stat_method: str):
+def get_stat_methos(stat_method: str) -> Union[spearmanr, pearsonr]:
     factory = {"spearman": spearmanr, "pearson": pearsonr}
     try:
         return factory[stat_method]

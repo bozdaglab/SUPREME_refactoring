@@ -1,9 +1,11 @@
 import logging
+from typing import Optional, Union
 
 import pandas as pd
 from set_logging import set_log_config
 from settings import IMPUTER_NAME_SUBSET
-from sklearn.experimental import enable_iterative_imputer
+
+# from sklearn.experimental import enable_iterative_imputer
 from sklearn.impute import IterativeImputer, KNNImputer
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.tree import ExtraTreeRegressor
@@ -46,7 +48,9 @@ def normalization(data: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(MinMaxScaler().fit_transform(data), columns=data.columns)
 
 
-def load_missing_method(imputer_name):
+def load_missing_method(
+    imputer_name: str,
+) -> Optional[Union[KNNImputer, IterativeImputer]]:
     if imputer_name == "KNNImputer":
         return KNNImputer(n_neighbors=2)
     elif imputer_name == "IterativeImputer":
