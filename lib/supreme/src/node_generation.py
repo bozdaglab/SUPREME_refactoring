@@ -36,7 +36,6 @@ set_log_config()
 logger = logging.getLogger()
 DEVICE = torch.device("cpu")
 
-
 config = {
     "hidden_size": tune.choice([2**i for i in range(4, 5)]),
     "lr": tune.loguniform(1e-4, 1e-3),
@@ -46,7 +45,7 @@ scheduler = ASHAScheduler(
     metric="loss",
     mode="min",
     max_t=20,
-    grace_period=1,
+    grace_period=20,
     reduction_factor=2,
 )
 
@@ -247,6 +246,7 @@ def train_steps(
     optimizer = select_optimizer(
         optimizer_type=OPTIM, model=model, learning_rate=config["lr"]
     )  # add OPTIM to the actual function
+    # scheduler_lr = torch.optim.lr_scheduler.ExponentialLR(optimizer=optimizer, gamma=0.95)
     checkpoint = train.get_checkpoint()
 
     if checkpoint:
@@ -254,14 +254,13 @@ def train_steps(
             checkpoint_dict = torch.load(os.path.join(checkpoint_dir, "checkpoint.pt"))
             epoch = checkpoint_dict["epoch"] + 1
             # model.load_state_dict(checkpoint_dict["model_state_dict"])
-
     for epoch in range(MAX_EPOCHS):
         loss, emb = model.train(optimizer, data)
         val_loss = model.validate(data=data)
-
         logger.info(
             f"Epoch: {epoch}, train_loss: {loss}, val_loss: {val_loss}",
         )
+        # scheduler_lr.step()
         if loss < min_valid_loss:  # and auc > model_accuracy:
             # model_accuracy = auc
             min_valid_loss = loss

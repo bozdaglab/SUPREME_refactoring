@@ -4,6 +4,7 @@ fastparquet
 feature_engine
 hyperopt
 lightgbm
+mlflow
 mlxtend
 numpy==1.23.3
 optuna

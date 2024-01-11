@@ -165,8 +165,6 @@ class MLModels:
         return search.best_estimator
 
     def RF(self):
-        # max_depth = [int(x) for x in np.linspace(50, 300, num=50)]
-        # max_depth.append(None)
         params = {
             "max_depth": [int(x) for x in np.linspace(50, 300, num=50)]
             # "n_estimators": [int(x) for x in np.linspace(start=50, stop=400, num=50)]
@@ -324,36 +322,7 @@ class ClusteringModels:
         )
 
         search.fit(self.x_train)
-
-        # best_n_clusters = search.best_params_["n_clusters"]
-        # best_init = search.best_params_["init"]
-        # best_n_init = search.best_params_["n_init"]
-
-        # kmeans_model = KMeans(
-        #     n_clusters=best_n_clusters, init=best_init, n_init=best_n_init
-        # )
-
-        # return kmeans_model.fit(self.x_train), search
         return search.best_estimator_
-        # best_k = 7
-        # sil_score = 0.0
-        # for n_clusters in [7, 8, 9]:
-        #     km = KMeans(
-        #         n_clusters=n_clusters, init="k-means++", n_init="auto", max_iter=100
-        #     )
-        #     score = silhouette_score(self.x_train, km.fit_predict(self.x_train))
-        #     if score > sil_score:
-        #         sil_score = score
-        #         best_k = n_clusters
-        #     print(
-        #         "For n_clusters =",
-        #         n_clusters,
-        #         "The average silhouette_score is :",
-        #         score,
-        #     )
-        # print("-------------------------")
-        # km = KMeans(n_clusters=best_k, init="k-means++", n_init="auto")
-        # return km.fit(self.x_train), ""
 
     def AFP(self):
         param = {

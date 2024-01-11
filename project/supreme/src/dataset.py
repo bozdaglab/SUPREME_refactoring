@@ -82,7 +82,7 @@ class BioDataset(Dataset):
         self.root = root
         files = [file.replace(".txt", ".pkl") for file in self.file_name]
         if not self.file_exist(files):
-            self.run_prepare_data()
+            prepare_data(self.raw_paths, DATA)
         self.data_dir = [osp.join(DATA, file) for file in os.listdir(DATA)]
         ray.init(num_cpus=os.cpu_count())
         self.run_node_feature_generation()
@@ -90,9 +90,6 @@ class BioDataset(Dataset):
 
     def file_exist(self, files: List[str]) -> bool:
         return len(files) != 0 and all([osp.exists(DATA / file) for file in files])
-
-    def run_prepare_data(self) -> None:
-        prepare_data(self.raw_paths, DATA)
 
     def run_node_feature_generation(self):
         if osp.exists(PATH_FEATURES) and len(SELECTION_METHOD) == len(
@@ -122,12 +119,12 @@ class BioDataset(Dataset):
                 )
                 for feature_type in feature_selections
             ]
-            while features_result_ray_not_done:
-                features_result_ray_done, features_result_ray_not_done = ray.wait(
-                    features_result_ray_not_done
-                )
-            final_result_features_selections = ray.get(features_result_ray_done)
-            save_pickle(final_result=final_result_features_selections[0])
+            # while features_result_ray_not_done:
+            #     features_result_ray_done, features_result_ray_not_done = ray.wait(
+            #         features_result_ray_not_done
+            #     )
+            # final_result_features_selections = ray.get(features_result_ray_done)
+            # save_pickle(final_result=final_result_features_selections[0])
 
     def run_similarity_matrix_generation(self):
         if osp.exists(EDGES) and sum(

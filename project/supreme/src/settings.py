@@ -13,23 +13,23 @@ LEARNING = json.loads(os.environ.get("LEARNING"))
 OPTIONAL_FEATURE_SELECTION = bool(
     strtobool(os.environ.get("OPTIONAL_FEATURE_SELECTION"))
 )
+ROOT = os.environ.get("ROOT")
 INT_MOTHOD_CLUSTERING = json.loads(os.environ.get("INT_MOTHOD_CLUSTERING"))
 INT_MOTHOD_CLASSIFICATION = json.loads(os.environ.get("INT_MOTHOD_CLASSIFICATION"))
 NUMBER_FEATURES = [50]
 X_ITER = 30
 SELECTION_METHOD = [
-    # "lasso",
+    "lasso",
     "RFE",
-    # "SelectFromModel",
-    # "BorutaPy",
-    # "pearson",
-    # ["BorutaPy", "pearson", "RFE", "SelectFromModel", "lasso"],
+    "SelectFromModel",
+    "BorutaPy",
+    "pearson",
+    "SelectBySingleFeaturePerformance",
+    "SelectByShuffling",
+    "GeneticSelectionCV",
+    "SequentialFeatureSelector",
+    ["BorutaPy", "pearson", "RFE", "SelectFromModel", "lasso"],
 ]
-# ]
-# "SelectBySingleFeaturePerformance",
-# "SelectByShuffling",
-#  "GeneticSelectionCV",
-#  "SequentialFeatureSelector",
 METHYLATION_P = float(os.environ.get("METHYLATION_P"))
 METHYLATION_S = float(os.environ.get("METHYLATION_S"))
 MICRO = float(os.environ.get("MICRO"))
@@ -85,7 +85,5 @@ PATH_FEATURES = DATA.parent / "selected_features"
 PATH_EMBEDDIGS = DATA.parent / "selected_features_embeddings"
 
 NODE_NETWORKS = FEATURE_NETWORKS_INTEGRATION.copy()
-
-
 FEATURE_SELECTION_PER_NETWORK = [False, False, False]
 TOP_FEATURES_PER_NETWORK = [50, 50, 50]
