@@ -4,7 +4,7 @@ env/
 *.pkl
 .vscode/
 *.pyc
-.env
+# .env
 */lib.egg-info*
 *_env
 lib.egg-info
