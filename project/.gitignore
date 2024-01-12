@@ -1,0 +1,13 @@
+env/
+*.R
+*.csv
+*.pkl
+.vscode/
+*.pyc
+.env
+*/lib.egg-info*
+*_env
+lib.egg-info
+# *.txt
+train_*
+data/

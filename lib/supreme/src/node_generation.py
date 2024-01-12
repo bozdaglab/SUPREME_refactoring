@@ -1,5 +1,6 @@
 import logging
 import os
+from collections import defaultdict
 
 # import statistics
 from functools import partial
@@ -54,8 +55,6 @@ scheduler = ASHAScheduler(
 def node_feature_generation(
     new_dataset: Dict,
     labels: Dict,
-    path_features: str,
-    path_embeggings: str,
     feature_type: Optional[str] = None,
 ) -> Tensor:
     """
@@ -71,36 +70,31 @@ def node_feature_generation(
     Return:
         Concatenated features from different omics file
     """
-    is_first = True
-    selected_features = []
-    for _, feat in new_dataset.items():
-        if row_col_ratio(feat):
-            # add an inner remote function and use get to get the result of the inner one before proceding
-            feat, final_features = select_features(
-                application_train=feat, labels=labels, feature_type=feature_type
-            )
-            selected_features.extend(final_features)
-            if not any(feat):
-                continue
+    selected_features = defaultdict(list)
+    selected_features["feature_type"] = feature_type
+    result = [
+        features_selection.remote(feat, selected_features, labels, feature_type)
+        for _, feat in new_dataset.items()
+    ]
+
+    return ray.get(result)
+
+
+@ray.remote(num_cpus=os.cpu_count())
+def features_selection(feat, selected_features, labels, feature_type):
+    if row_col_ratio(feat):
+        feat, final_features = select_features(
+            application_train=feat, labels=labels, feature_type=feature_type
+        )
+        selected_features["features"].extend(final_features)
+        if any(feat):
             values = torch.tensor(feat.values, device=DEVICE)
-        else:
-            selected_features.extend(feat.columns)
-            values = feat.values
-        if is_first:
-            new_x = torch.tensor(values, device=DEVICE).float()
-            is_first = False
-        else:
-            new_x = torch.cat(
-                (new_x, torch.tensor(values, device=DEVICE).float()), dim=1
-            )
-    if not os.path.exists(path_features):
-        os.makedirs(path_features)
-    pd.DataFrame(selected_features).to_pickle(
-        path_features / f"selected_features_{feature_type}.pkl"
-    )
-    if not os.path.exists(path_embeggings):
-        os.makedirs(path_embeggings)
-    pd.DataFrame(new_x).to_pickle(path_embeggings / f"embeddings_{feature_type}.pkl")
+    else:
+        selected_features["features"].extend(feat.columns.tolist())
+        values = feat.values
+    selected_features["tensors"].append(torch.tensor(values, device=DEVICE).float())
+
+    return selected_features
 
 
 def node_embedding_generation() -> None:

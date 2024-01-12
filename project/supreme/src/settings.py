@@ -19,16 +19,16 @@ INT_MOTHOD_CLASSIFICATION = json.loads(os.environ.get("INT_MOTHOD_CLASSIFICATION
 NUMBER_FEATURES = [50]
 X_ITER = 30
 SELECTION_METHOD = [
-    "lasso",
+    # "lasso",
     "RFE",
-    "SelectFromModel",
-    "BorutaPy",
+    # "SelectFromModel",
+    # "BorutaPy",
     "pearson",
-    "SelectBySingleFeaturePerformance",
-    "SelectByShuffling",
-    "GeneticSelectionCV",
-    "SequentialFeatureSelector",
-    ["BorutaPy", "pearson", "RFE", "SelectFromModel", "lasso"],
+    # "SelectBySingleFeaturePerformance",
+    # "SelectByShuffling",
+    # "GeneticSelectionCV",
+    # "SequentialFeatureSelector",
+    # ["BorutaPy", "pearson", "RFE", "SelectFromModel", "lasso"],
 ]
 METHYLATION_P = float(os.environ.get("METHYLATION_P"))
 METHYLATION_S = float(os.environ.get("METHYLATION_S"))

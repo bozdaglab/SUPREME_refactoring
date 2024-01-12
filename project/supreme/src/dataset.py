@@ -13,7 +13,12 @@ import torch
 from helper import masking_indexes, pos_neg, random_split, read_labels
 from learning_types import SelectModel
 from node_generation import node_feature_generation
-from pre_process_data import prepare_data, save_pickle, similarity_matrix_generation
+from pre_process_data import (
+    prepare_data,
+    save_pickle_embeddings,
+    save_pickle_features,
+    similarity_matrix_generation,
+)
 from set_logging import set_log_config
 from settings import (
     BASE_DATAPATH,
@@ -114,17 +119,15 @@ class BioDataset(Dataset):
                     new_dataset=sample_data,
                     labels=labels,
                     feature_type=feature_type,
-                    path_features=PATH_FEATURES,
-                    path_embeggings=PATH_EMBEDDIGS,
                 )
                 for feature_type in feature_selections
             ]
-            # while features_result_ray_not_done:
-            #     features_result_ray_done, features_result_ray_not_done = ray.wait(
-            #         features_result_ray_not_done
-            #     )
-            # final_result_features_selections = ray.get(features_result_ray_done)
-            # save_pickle(final_result=final_result_features_selections[0])
+            while features_result_ray_not_done:
+                features_result_ray_done, features_result_ray_not_done = ray.wait(
+                    features_result_ray_not_done
+                )
+                final_result_features_selections = ray.get(features_result_ray_done)
+                save_pickle_features(final_result=final_result_features_selections[0])
 
     def run_similarity_matrix_generation(self):
         if osp.exists(EDGES) and sum(
@@ -141,7 +144,7 @@ class BioDataset(Dataset):
                 embedding_result_ray_not_done
             )
             final_result_emb = ray.get(embedding_result_ray_done)
-            save_pickle(final_result=final_result_emb[0])
+            save_pickle_embeddings(final_result=final_result_emb[0])
 
     def read_sample_data(self) -> Dict:
         sample_data = defaultdict()

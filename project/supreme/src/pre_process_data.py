@@ -20,13 +20,14 @@ from networkx.readwrite import json_graph
 from pre_processings import pre_processing
 from scipy.stats import pearsonr, spearmanr
 from set_logging import set_log_config
-from settings import EDGES, LABELS
+from settings import EDGES, LABELS, PATH_EMBEDDIGS, PATH_FEATURES
 from sklearn.preprocessing import LabelEncoder
 from torch_geometric.utils import remove_self_loops
 
 logger = logging.getLogger()
 set_log_config()
 FUNC_NAME = "only_one"
+DEVICE = torch.device("cpu")
 
 
 def process_data(edge_index: Dict):
@@ -170,7 +171,31 @@ def similarity_matrix_generation(new_dataset: Dict, stat, func_name=FUNC_NAME):
     return ray.get(result)
 
 
-def save_pickle(final_result: List[Dict]) -> None:
+def save_pickle_features(final_result: List[Dict]):
+    selected_features = []
+    feature_type = final_result[0]["feature_type"]
+    is_first = True
+    for result in final_result:
+        selected_features.extend(result["features"])
+        tensors = result["tensors"][0]
+        if is_first:
+            new_x = torch.tensor(tensors, device=DEVICE).float()
+            is_first = False
+        else:
+            new_x = torch.cat(
+                (new_x, torch.tensor(tensors, device=DEVICE).float()), dim=1
+            )
+    if not os.path.exists(PATH_FEATURES):
+        os.makedirs(PATH_FEATURES)
+    pd.DataFrame(selected_features).to_pickle(
+        PATH_FEATURES / f"selected_features_{feature_type}.pkl"
+    )
+    if not os.path.exists(PATH_EMBEDDIGS):
+        os.makedirs(PATH_EMBEDDIGS)
+    pd.DataFrame(new_x).to_pickle(PATH_EMBEDDIGS / f"embeddings_{feature_type}.pkl")
+
+
+def save_pickle_embeddings(final_result: List[Dict]) -> None:
     for result in final_result:
         func_name = result["func_name"]
         path = Path(result["final_path"]).parts
