@@ -14,7 +14,7 @@ from learning_types import FeatureSelectionType
 # from genetic_selection import GeneticSelectionCV
 from mlxtend.feature_selection import SequentialFeatureSelector
 from scipy.stats import pearsonr, spearmanr
-from settings import CNA, LABELS, METHYLATION_P, METHYLATION_S, MICRO
+from settings import CNA, LABELS, METHYLATION, MICRO
 from sklearn.feature_selection import RFE, SelectFromModel
 from torch import Tensor
 from torch_geometric.utils import coalesce, remove_self_loops
@@ -23,15 +23,12 @@ from torch_geometric.utils.num_nodes import maybe_num_nodes
 DEVICE = torch.device("cpu")
 
 
-def chnage_connections_thr(file_name: str, stat: str, thr: float = 0.60) -> float:
-    if "similarity_data_methylation" in file_name:
-        if stat == "pearson":
-            thr = METHYLATION_P
-        elif stat == "spearman":
-            thr = METHYLATION_S
-    elif "similarity_data_mrna" in file_name:
+def chnage_connections_thr(file_name: str) -> float:
+    if "data_methylation" in file_name:
+        thr = METHYLATION
+    elif "data_mrna" in file_name:
         thr = MICRO
-    elif "similarity_data_cna" in file_name:
+    elif "data_cna" in file_name:
         thr = CNA
     return thr
 
@@ -131,9 +128,6 @@ def edge_index_from_dict(graph_dict, num_nodes=None):
         row += repeat(key, len(value))
         col += value
     edge_index = torch.stack([torch.tensor(row), torch.tensor(col)], dim=0)
-
-    # NOTE: There are some duplicated edges and self loops in the datasets.
-    #       Other implementations do not remove them!
     edge_index, _ = remove_self_loops(edge_index)
     num_nodes = maybe_num_nodes(edge_index)
     edge_index = coalesce(edge_index, num_nodes=num_nodes)

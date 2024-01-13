@@ -14,7 +14,9 @@ from helper import masking_indexes, pos_neg, random_split, read_labels
 from learning_types import SelectModel
 from node_generation import node_feature_generation
 from pre_process_data import (
+    node2vec,
     prepare_data,
+    random_walk_pos,
     save_pickle_embeddings,
     save_pickle_features,
     similarity_matrix_generation,
@@ -22,25 +24,17 @@ from pre_process_data import (
 from set_logging import set_log_config
 from settings import (
     BASE_DATAPATH,
-    CONTEXT_SIZE,
     DATA,
     EDGES,
-    EMBEDDING_DIM,
     PATH_EMBEDDIGS,
     PATH_FEATURES,
     POS_NEG_MODELS,
     SELECTION_METHOD,
-    SPARSE,
     STAT_METHOD,
-    WALK_LENGHT,
-    WALK_PER_NODE,
-    P,
-    Q,
 )
 from sklearn.model_selection import RepeatedStratifiedKFold, train_test_split
 from torch import Tensor
 from torch_geometric.data import Data, Dataset
-from torch_geometric.nn import Node2Vec
 from torch_geometric.utils import (
     coalesce,
     negative_sampling,
@@ -245,23 +239,10 @@ class BioDataset(Dataset):
         # index_to_mask (e.g, index_to_mask(train_index, size=y.size(0)))
         data = self.make_data(new_x=new_x, edge_index=edge_index)
         if data_generation_types == SelectModel.node2vec.name:
-            node2vec = Node2Vec(
-                edge_index=data.edge_index,
-                embedding_dim=EMBEDDING_DIM,
-                walk_length=WALK_LENGHT,
-                context_size=CONTEXT_SIZE,
-                walks_per_node=WALK_PER_NODE,
-                p=P,
-                q=Q,
-                sparse=SPARSE,
-            ).to(DEVICE)
-            pos, neg = node2vec.sample([10, 15])  # batch size
-            data.pos_edge_labels = torch.tensor(pos.T, device=DEVICE).long()
-            data.neg_edge_labels = torch.tensor(neg.T, device=DEVICE).long()
-        # elif data_generation_types == SelectModel.similarity_based.name:
-        #     data.pos_edge_labels = pos_neg(edge_index, "link", 1)
-        #     data.neg_edge_labels = pos_neg(edge_index, "link", 0)
-        elif data_generation_types == SelectModel.train_test.name:
+            data = node2vec(data)
+        elif data_generation_types == SelectModel.randomwalk.name:
+            data.pos_edge_labels, data.neg_edge_labels = random_walk_pos(data)
+        if data_generation_types == SelectModel.train_test.name:
             data.num_nodes = maybe_num_nodes(data.edge_index)
             edge_index = data.edge_index
             edge_attr = data.edge_attr

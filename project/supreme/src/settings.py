@@ -30,8 +30,7 @@ SELECTION_METHOD = [
     # "SequentialFeatureSelector",
     # ["BorutaPy", "pearson", "RFE", "SelectFromModel", "lasso"],
 ]
-METHYLATION_P = float(os.environ.get("METHYLATION_P"))
-METHYLATION_S = float(os.environ.get("METHYLATION_S"))
+METHYLATION = float(os.environ.get("METHYLATION"))
 MICRO = float(os.environ.get("MICRO"))
 CNA = float(os.environ.get("CNA"))
 MODELS_B = ["RF"]
