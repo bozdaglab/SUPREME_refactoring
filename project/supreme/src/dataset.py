@@ -34,7 +34,7 @@ from settings import (
 )
 from sklearn.model_selection import RepeatedStratifiedKFold, train_test_split
 from torch import Tensor
-from torch_geometric.data import Data, Dataset
+from torch_geometric.data import Data, InMemoryDataset
 from torch_geometric.utils import (
     coalesce,
     negative_sampling,
@@ -52,13 +52,13 @@ similar to what we see here https://mlabonne.github.io/blog/posts/2022-04-06-Gra
 """
 
 
-class BioDataset(Dataset):
+class BioDataset(InMemoryDataset):
     def __init__(
         self,
         root: str,
         file_name: List[str],
         raw_directories: List[str],
-        loader: bool = False,
+        loader: bool = True,
     ):
         self.file_name = file_name
         self.loader = loader
@@ -185,35 +185,13 @@ class BioDataset(Dataset):
 
     def create_with_loader(self, new_x, labels, edge_index, dir, file_path):
         graphs = []
-        for idx, patient in enumerate(new_x):
-            node_features = patient
-            label = labels["CLAUDIN_SUBTYPE"][labels.index == idx].values
+        for idx, patient_feat in enumerate(new_x):
+            node_features = patient_feat
+            label = labels[labels.index == idx].values
             data = Data(x=node_features, edge_index=edge_index, y=label)
             graphs.append(data)
-        data, slice = self.collate(data)
-        torch.save((data, slice), dir / f"data_{idx}.pt")
-        # create dataloader
-        # for stat in os.listdir(EDGES):
-        #     final_correlation = defaultdict()
-        #     for file in os.listdir(EDGES / stat):
-        #         final_correlation[file] = pd.read_pickle(EDGES / stat / file)
-        #     new_x = pd.read_pickle(PATH_EMBEDDIGS / os.listdir(PATH_EMBEDDIGS)[0])
-        #     if isinstance(new_x, pd.DataFrame):
-        #         new_x = torch.tensor(new_x.values, dtype=torch.float32)
-        #     lables = pd.read_pickle(LABELS / os.listdir(LABELS)[0])
-        #     base_dir = BASE_DATAPATH / stat
-        #     for file_name, edge_index in final_correlation.items():
-        #         dataset_dir = base_dir / file_name
-        #         self.make_directories(dataset_dir)
-        #         graphs = []
-        #         for idx, patient in enumerate(new_x):
-        #             node_features = patient
-        #             # edge_index = np.where(edges["Patient_1"] == idx)
-        #             label = labels["CLAUDIN_SUBTYPE"][lables.index == idx].values
-        #             data =  Data(x=node_features, edge_index=edge_index, y=label)
-        #             graphs.append(data)
-        #         data, slice = self.collate(data)
-        #         torch.save((data, slice), dataset_dir / f"data_{idx}.pt")
+        data, slice = self.collate(graphs)
+        torch.save((data, slice), osp.join(dir, "dataloader.pt"))
 
     def create_data(
         self, new_x, data_generation_types: str, edge_index: pd.DataFrame
@@ -320,7 +298,6 @@ class BioDataset(Dataset):
             except:
                 X = data.x[train_valid_idx]
                 y = data.y[train_valid_idx]
-            # y_ph = labels.iloc[:, 3][train_valid_idx.indices]
 
             rskf = RepeatedStratifiedKFold(n_splits=4, n_repeats=1)
             for train_part, valid_part in rskf.split(X, y):

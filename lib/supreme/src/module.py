@@ -8,13 +8,14 @@ import torch.nn.functional as F
 from dotenv import find_dotenv, load_dotenv
 from learning_types import LearningTypes
 from set_logging import set_log_config
+from torch.nn import Linear, Module
+from torch_geometric.data import Data
 
 # from sklearn.metrics import (  # mean_squared_error,; r2_score,
 #     average_precision_score,
 #     roc_auc_score,
 # )
-from torch.nn import Linear, Module
-from torch_geometric.data import Data
+# from torch_geometric.loader import NeighborLoader
 from torch_geometric.nn import GAE, GCNConv
 
 # from torch_geometric.nn.models.autoencoder import InnerProductDecoder
