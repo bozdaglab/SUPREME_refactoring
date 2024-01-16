@@ -261,8 +261,8 @@ def random_walk_pos(data: Data) -> Tuple[Tensor, Tensor]:
                     pos_nodes.append(int(next_node))
                 cur_node = next_node
         pos_neighbors[int(node)] = pos_nodes
-        neg_neighbors[int(node)] = random_walk_neg(node, pos_nodes, data, cur_node)
-    return edge_index_from_dict(pos_neighbors), edge_index_from_dict(neg_neighbors)
+        # neg_neighbors[int(node)] = random_walk_neg(node, pos_nodes, data, cur_node)
+    return edge_index_from_dict(pos_neighbors)#, edge_index_from_dict(neg_neighbors)
 
 
 def random_walk_neg(
@@ -273,7 +273,7 @@ def random_walk_neg(
     )
     frontier = walk_lenght_distance_nodes
     neghibor = walk_lenght_distance_nodes
-    for _ in range(12):
+    for _ in range(WALK_LENGHT):
         cur_nodes = set()
         for cur_node in frontier:
             cur_nodes |= set(data.edge_index[1][data.edge_index[0] == cur_node].numpy())

@@ -17,14 +17,6 @@ DEVICE = torch.device("cpu")
 EPS = 1e-15
 
 
-def model_loss_output(self, model_choice: str) -> int:
-    if model_choice == LearningTypes.regression.name:
-        return 1
-    elif model_choice == LearningTypes.classification.name:
-        return len(self.labels.value_counts().unique())
-    return self.new_x.shape[-1]
-
-
 def select_optimizer(
     optimizer_type: str, model: Module, learning_rate: float
 ) -> torch.optim:
@@ -66,7 +58,7 @@ def select_optimizer(
 
 
 def select_model(
-    super_unsuper_model: str, in_size: int, hid_size: int, out_size: int
+    super_unsuper_model: str, in_size: int, hid_size: int
 ) -> Union[
     SupremeClassification,
     SupremeClusteringLink,
@@ -82,8 +74,6 @@ def select_model(
         Input size of the model
     hid_size:
         hidden size
-    out_size:
-        output size of the model
 
     Return:
         Models, whether original SUPREME, or encoder-decoder model
@@ -92,20 +82,29 @@ def select_model(
         LearningTypes.classification.name,
         LearningTypes.regression.name,
     ]:
+
+        if super_unsuper_model == LearningTypes.regression.name:
+            out_size = 1
+        elif super_unsuper_model == LearningTypes.classification.name:
+            out_size = len(labels.value_counts().unique())
         model = SUPREME(in_size=in_size, hid_size=hid_size, out_size=out_size)
         return SupremeClassification(
             model=model, super_unsuper_model=super_unsuper_model
         )
     else:
         if super_unsuper_model == SuperUnsuperModel.linkprediction.name:
+            out_size = 32
             model = SUPREME(in_size=in_size, hid_size=hid_size, out_size=out_size)
             return SupremeClusteringLink(model=model)
         elif super_unsuper_model == SuperUnsuperModel.encoderinproduct.name:
+            out_size = 32
             encoder = SUPREME(in_size=in_size, hid_size=hid_size, out_size=out_size)
             return EncoderInnerProduct(encoder=encoder)
         elif super_unsuper_model == SuperUnsuperModel.entireinput.name:
+            out_size = 32
             encoder = SUPREME(in_size=in_size, hid_size=hid_size, out_size=out_size)
             decoder = Discriminator(
                 in_size=in_size, hid_size=hid_size, out_size=out_size
             )
             return EncoderEntireInput(encoder=encoder, decoder=decoder)
+

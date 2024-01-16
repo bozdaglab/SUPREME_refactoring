@@ -34,7 +34,7 @@ from settings import (
 )
 from sklearn.model_selection import RepeatedStratifiedKFold, train_test_split
 from torch import Tensor
-from torch_geometric.data import Data, InMemoryDataset
+from torch_geometric.data import Data, Dataset
 from torch_geometric.utils import (
     coalesce,
     negative_sampling,
@@ -52,13 +52,13 @@ similar to what we see here https://mlabonne.github.io/blog/posts/2022-04-06-Gra
 """
 
 
-class BioDataset(InMemoryDataset):
+class BioDataset(Dataset):
     def __init__(
         self,
         root: str,
         file_name: List[str],
         raw_directories: List[str],
-        loader: bool = True,
+        loader: bool = False,
     ):
         self.file_name = file_name
         self.loader = loader
@@ -158,7 +158,7 @@ class BioDataset(InMemoryDataset):
             if isinstance(new_x, pd.DataFrame):
                 new_x = torch.tensor(new_x.values, dtype=torch.float32)
             for file in os.listdir(EDGES / stat):
-                file_path = f"{folder_path}_{file.split('.')[0]}"
+                file_path = f"{file.split('.')[0]}"
                 dir = os.path.join(self.processed_dir, "graph_data", folder_path)
                 edge_index = pd.read_pickle(EDGES / stat / file)
                 generator(
@@ -173,28 +173,34 @@ class BioDataset(InMemoryDataset):
 
     def create_without_loader(self, new_x, edge_index, dir, file_path, labels=None):
         for data_generation_types in POS_NEG_MODELS:
-            data = self.create_data(
+            self.create_data(
                 new_x=new_x,
                 data_generation_types=data_generation_types,
                 edge_index=edge_index,
+                dir=dir,
+                file_path=file_path
             )
-            dir_update = f"{dir}_{data_generation_types}"
-            if not os.path.exists(dir_update):
-                os.makedirs(dir_update)
-            torch.save(data, osp.join(dir_update, f"{file_path}.pt"))
 
     def create_with_loader(self, new_x, labels, edge_index, dir, file_path):
         graphs = []
         for idx, patient_feat in enumerate(new_x):
             node_features = patient_feat
             label = labels[labels.index == idx].values
-            data = Data(x=node_features, edge_index=edge_index, y=label)
+            data = self.make_data(new_x=node_features, edge_index=edge_index, labels=label)
             graphs.append(data)
-        data, slice = self.collate(graphs)
-        torch.save((data, slice), osp.join(dir, "dataloader.pt"))
+        train_valid_idx, test_idx = random_split(new_x=new_x)
+        train_idx, valid_idx = train_test_split(
+                        train_valid_idx.indices, test_size=0.25
+                    )
+        for indexs, name in zip([train_idx, valid_idx, test_idx.indices], ["train_data", "valid_data", "test_data"]):
+            new_dir = osp.join(dir, file_path, name)
+            if not osp.exists(new_dir):
+                os.makedirs(new_dir)
+            for idx in indexs:
+                torch.save(graphs[idx], osp.join(new_dir, f"{idx}.pt"))
 
     def create_data(
-        self, new_x, data_generation_types: str, edge_index: pd.DataFrame
+        self, new_x, data_generation_types: str, edge_index: pd.DataFrame, dir, file_path
     ) -> Data:
         """
         Create a data object by adding features, edge_index, edge_attr.
@@ -210,33 +216,42 @@ class BioDataset(InMemoryDataset):
             A data object ready to pass to GCN
         """
         train_valid_idx, test_idx = random_split(new_x=new_x)
+        train_idx, valid_idx = train_test_split(
+                        train_valid_idx.indices, test_size=0.25
+                    )
         if isinstance(edge_index, dict):
             edge_index = pd.DataFrame(edge_index).T
-        # edge_index = process_data(edge_index=edge_index)
-        # use index to mask inorder to generate the val, test, and train
-        # index_to_mask (e.g, index_to_mask(train_index, size=y.size(0)))
-        data = self.make_data(new_x=new_x, edge_index=edge_index)
-        if data_generation_types == SelectModel.node2vec.name:
-            data = node2vec(data)
-        elif data_generation_types == SelectModel.randomwalk.name:
-            data.pos_edge_labels, data.neg_edge_labels = random_walk_pos(data)
-        if data_generation_types == SelectModel.train_test.name:
-            data.num_nodes = maybe_num_nodes(data.edge_index)
-            edge_index = data.edge_index
-            edge_attr = data.edge_attr
-            data = train_test_split_edges(data=data)
-            data.edge_index = edge_index
-            data.edge_attr = edge_attr
-        elif data_generation_types == SelectModel.similarity_based.name:
-            data.pos_edge_labels = pos_neg(edge_index, "link", 1)
-            data.neg_edge_labels = negative_sampling(
-                data.pos_edge_labels, new_x.size(0)
-            )
-        return self.train_test_valid(
-            data=data, train_valid_idx=train_valid_idx, test_idx=test_idx
-        )
+        for indexs, name in zip([train_idx, valid_idx, test_idx.indices], ["train_data", "valid_data", "test_data"]):
+            edge_index_indexs = edge_index[edge_index["source"].isin(indexs) & edge_index["target"].isin(indexs)].reset_index(drop=True)
+            data = self.make_data(new_x=new_x, edge_index=edge_index_indexs)
+            if data_generation_types == SelectModel.node2vec.name:
+                data = node2vec(data)
+            elif data_generation_types == SelectModel.randomwalk.name:
+                data.pos_edge_labels = random_walk_pos(data)
+                data.neg_edge_labels = negative_sampling(
+                    data.pos_edge_labels, new_x.size(0)
+                )
+                # for short data, the negative might be empty
+                # data.pos_edge_labels, data.neg_edge_labels = random_walk_pos(data)
+            if data_generation_types == SelectModel.train_test.name:
+                data.num_nodes = maybe_num_nodes(data.edge_index)
+                edge_in = data.edge_index
+                edge_attr = data.edge_attr
+                data = train_test_split_edges(data=data)
+                data.edge_index = edge_in
+                data.edge_attr = edge_attr
+            elif data_generation_types == SelectModel.similarity_based.name:
+                data.pos_edge_labels = pos_neg(edge_index_indexs, "link", 1)
+                data.neg_edge_labels = negative_sampling(
+                    data.pos_edge_labels, new_x.size(0)
+                )
+            dir_update = osp.join(f"{dir}_{data_generation_types}", file_path, name)
+            if not os.path.exists(dir_update):
+                os.makedirs(dir_update)
+            torch.save(data, osp.join(dir_update, f"{file_path}.pt"))
 
-    def make_data(self, new_x: Tensor, edge_index: pd.DataFrame) -> Data:
+
+    def make_data(self, new_x: Tensor, edge_index: pd.DataFrame, labels = None) -> Data:
         """
         Generate a data object that holds node features, edge_index and edge_attr.
 
@@ -257,80 +272,82 @@ class BioDataset(InMemoryDataset):
                 device=DEVICE,
             ).long(),
             edge_attr=torch.tensor(
-                edge_index[edge_index.columns[3]].transpose().values,
+                edge_index[edge_index.columns[2]].transpose().values,
                 device=DEVICE,
             ).float(),
         )
-        edge_index, _ = remove_self_loops(data.edge_index)
-        data.edge_index = coalesce(edge_index=edge_index, num_nodes=new_x.shape[0])
-        return data
-
-    def train_test_valid(
-        self,
-        data: Data,
-        train_valid_idx: Tensor,
-        test_idx: Tensor,
-        labels: Optional[pd.DataFrame] = None,
-    ) -> Data:
-        """
-        This function adds train, test, and validation data to the data object.
-        If a label is available, it applies a Repeated Stratified K-Fold cross-validator.
-        Otherwise, split the tensor into random train and test subsets.
-
-        Parameters:
-        -----------
-        data:
-            Data object
-        train_valid_idx:
-            train validation indexes
-        test_idx:
-            test indexes
-        labels:
-            Dataset labels
-
-        Return:
-            A data object that holds train, test, and validation indexes
-        """
         if labels is not None:
-            try:
-                X = data.x[train_valid_idx.indices]
-                y = data.y[train_valid_idx.indices]
-            except:
-                X = data.x[train_valid_idx]
-                y = data.y[train_valid_idx]
-
-            rskf = RepeatedStratifiedKFold(n_splits=4, n_repeats=1)
-            for train_part, valid_part in rskf.split(X, y):
-                try:
-                    train_idx = np.array(train_valid_idx.indices)[train_part]
-                    valid_idx = np.array(train_valid_idx.indices)[valid_part]
-                except:
-                    train_idx = np.array(train_valid_idx)[train_part]
-                    valid_idx = np.array(train_valid_idx)[valid_part]
-                break
-
-        elif "val_pos_edge_index" in data.keys():
-            return data
-        else:
-            train_idx, valid_idx = train_test_split(
-                train_valid_idx.indices, test_size=0.25
-            )
-
-        data.valid_mask = torch.tensor(
-            masking_indexes(data=data, indexes=valid_idx), device=DEVICE
-        )
-        data.train_mask = torch.tensor(
-            masking_indexes(data=data, indexes=train_idx), device=DEVICE
-        )
-        try:
-            data.test_mask = torch.tensor(
-                masking_indexes(data=data, indexes=test_idx), device=DEVICE
-            )
-        except (KeyError, TypeError):
-            data.test_mask = torch.tensor(
-                masking_indexes(data=data, indexes=test_idx.indices), device=DEVICE
-            )
+            data.y = torch.tensor(labels)
+        edge_index, _ = remove_self_loops(data.edge_index)
+        data.edge_index, data.edge_attr = coalesce(edge_index=edge_index, edge_attr=data.edge_attr, num_nodes=new_x.shape[0])
         return data
+
+    # def train_test_valid(
+    #     self,
+    #     data: Data,
+    #     train_valid_idx: Tensor,
+    #     test_idx: Tensor,
+    #     labels: Optional[pd.DataFrame] = None,
+    # ) -> Data:
+    #     """
+    #     This function adds train, test, and validation data to the data object.
+    #     If a label is available, it applies a Repeated Stratified K-Fold cross-validator.
+    #     Otherwise, split the tensor into random train and test subsets.
+
+    #     Parameters:
+    #     -----------
+    #     data:
+    #         Data object
+    #     train_valid_idx:
+    #         train validation indexes
+    #     test_idx:
+    #         test indexes
+    #     labels:
+    #         Dataset labels
+
+    #     Return:
+    #         A data object that holds train, test, and validation indexes
+    #     """
+    #     if labels is not None:
+    #         try:
+    #             X = data.x[train_valid_idx.indices]
+    #             y = data.y[train_valid_idx.indices]
+    #         except:
+    #             X = data.x[train_valid_idx]
+    #             y = data.y[train_valid_idx]
+
+    #         rskf = RepeatedStratifiedKFold(n_splits=4, n_repeats=1)
+    #         for train_part, valid_part in rskf.split(X, y):
+    #             try:
+    #                 train_idx = np.array(train_valid_idx.indices)[train_part]
+    #                 valid_idx = np.array(train_valid_idx.indices)[valid_part]
+    #             except:
+    #                 train_idx = np.array(train_valid_idx)[train_part]
+    #                 valid_idx = np.array(train_valid_idx)[valid_part]
+    #             break
+
+    #     elif "val_pos_edge_index" in data.keys():
+    #         return data
+    #     else:
+    #         train_idx, valid_idx = train_test_split(
+    #             train_valid_idx.indices, test_size=0.25
+    #         )
+
+    #     data.valid_mask = torch.tensor(
+    #         masking_indexes(data=data, indexes=valid_idx), device=DEVICE
+    #     )
+    #     data.train_mask = torch.tensor(
+    #         masking_indexes(data=data, indexes=train_idx), device=DEVICE
+    #     )
+    #     try:
+    #         data.test_mask = torch.tensor(
+    #             masking_indexes(data=data, indexes=test_idx), device=DEVICE
+    #         )
+    #     except (KeyError, TypeError):
+    #         data.test_mask = torch.tensor(
+    #             masking_indexes(data=data, indexes=test_idx.indices), device=DEVICE
+    #         )
+    #     return data
 
     def len(self):
         pass

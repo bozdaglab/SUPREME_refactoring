@@ -10,7 +10,8 @@ import xgboost as xgb
 from boruta import BorutaPy
 from feature_engine.selection import SelectByShuffling, SelectBySingleFeaturePerformance
 from learning_types import FeatureSelectionType
-
+from sklearn.cluster import KMeans
+from sklearn.metrics.cluster import silhouette_score
 # from genetic_selection import GeneticSelectionCV
 from mlxtend.feature_selection import SequentialFeatureSelector
 from scipy.stats import pearsonr, spearmanr
@@ -19,9 +20,16 @@ from sklearn.feature_selection import RFE, SelectFromModel
 from torch import Tensor
 from torch_geometric.utils import coalesce, remove_self_loops
 from torch_geometric.utils.num_nodes import maybe_num_nodes
-
+from torch_geometric.loader import NeighborLoader, DataLoader
 DEVICE = torch.device("cpu")
 
+
+def pos_neg_generator(pos_neg_data: Tensor, edges: Tensor):
+    mask = torch.zeros_like(pos_neg_data, dtype=bool)
+    for idx in range(len(pos_neg_data[0])):
+        if all(torch.isin(dim[idx], edges) for dim in pos_neg_data):
+            mask[:, idx] = True
+    return mask
 
 def chnage_connections_thr(file_name: str) -> float:
     if "data_methylation" in file_name:
@@ -32,6 +40,24 @@ def chnage_connections_thr(file_name: str) -> float:
         thr = CNA
     return thr
 
+
+def data_loader(data):
+    if isinstance(data, list):
+        train_data = DataLoader(dataset=data, batch_size=8, shuffle=True)
+    else:
+        train_data = NeighborLoader(data=data, batch_size=16, shuffle=True,
+                        num_neighbors=[5, 10],
+                        num_workers=6, persistent_workers=True)
+    return train_data
+
+def re_generate_pos_neg(batch_data):
+    pos_bool = pos_neg_generator(batch_data.pos_edge_labels,batch_data.edge_index)
+    filtered_pos = batch_data.pos_edge_labels[pos_bool]
+    batch_data.pos_edge_labels = filtered_pos.view(pos_bool.shape[0], -1)
+    neg_bool = pos_neg_generator(batch_data.neg_edge_labels,batch_data.edge_index)
+    filtered_neg = batch_data.neg_edge_labels[neg_bool]
+    batch_data.neg_edge_labels = filtered_neg.view(neg_bool.shape[0], -1)
+    return batch_data.to(DEVICE)
 
 def read_labels() -> pd.DataFrame:
     return pd.read_pickle(LABELS / os.listdir(LABELS)[0])["CLAUDIN_SUBTYPE"]
@@ -77,6 +103,11 @@ def lower_upper_bound(new_alpha: float, mulitply: int = 2, range_value=6) -> np.
     lower_bound = abs(new_alpha - large)
     upper_bound = new_alpha + large
     return np.linspace(lower_bound, upper_bound, range_value)
+
+def silhouette(emb: Tensor):
+    emb = emb.detach().cpu().numpy()
+    pred = KMeans(n_clusters=7).fit_predict(emb)
+    return silhouette_score(emb, pred)
 
 
 def random_split(new_x: Tensor) -> Tuple[Tensor, Tensor]:

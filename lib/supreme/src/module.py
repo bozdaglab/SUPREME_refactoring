@@ -1,24 +1,23 @@
 # from typing import Union
 
 import logging
-
-# import numpy as np
+import numpy as np
 import torch
 import torch.nn.functional as F
 from dotenv import find_dotenv, load_dotenv
+from helper import silhouette, pos_neg_generator
 from learning_types import LearningTypes
 from set_logging import set_log_config
 from torch.nn import Linear, Module
 from torch_geometric.data import Data
-
-# from sklearn.metrics import (  # mean_squared_error,; r2_score,
-#     average_precision_score,
-#     roc_auc_score,
-# )
-# from torch_geometric.loader import NeighborLoader
+from sklearn.metrics import ( mean_squared_error, r2_score,
+    average_precision_score,
+    roc_auc_score,
+)
+from helper import data_loader, re_generate_pos_neg
+import tqdm
 from torch_geometric.nn import GAE, GCNConv
 
-# from torch_geometric.nn.models.autoencoder import InnerProductDecoder
 set_log_config()
 logger = logging.getLogger()
 load_dotenv(find_dotenv())
@@ -26,12 +25,6 @@ load_dotenv(find_dotenv())
 DEVICE = torch.device("cpu")
 MAX_LOGSTD = 10
 EPS = 1e-15
-
-
-# https://arxiv.org/abs/1607.00653,
-# https://arxiv.org/abs/1611.0730,
-# https://arxiv.org/abs/1706.02216
-
 
 class SUPREME(Module):
     """
@@ -113,56 +106,83 @@ class SupremeClusteringLink:
     def __init__(self, model: SUPREME) -> None:
         self.model = model
         self.criterion_link = torch.nn.BCEWithLogitsLoss()
-        # self.Q = 10  # defines the number of negative samples
+        self.Q = 10  # defines the number of negative samples
 
     def train(self, optimizer: torch.optim, data: Data):
         # GraphSAGE predict adjacency matrix https://arxiv.org/abs/1706.02216
         self.model.train()
         optimizer.zero_grad()
-        emb, _ = self.model(data)
-        if "neg_edge_labels" in data.keys():
-            pos_data = data.pos_edge_labels
-            neg_data = data.neg_edge_labels
-        else:
-            pos_data = data.test_pos_edge_index
-            neg_data = data.test_neg_edge_index
+        total_loss = 0
+        train_data_loader = data_loader(data)
+        for batch_data in tqdm.tqdm(train_data_loader):
+            data = re_generate_pos_neg(batch_data=batch_data)
+            emb, _ = self.model(data)
+            if "neg_edge_labels" in data.keys():
+                pos_data = data.pos_edge_labels
+                neg_data = data.neg_edge_labels
+            else:
+                pos_data = data.test_pos_edge_index
+                neg_data = data.test_neg_edge_index
+            src_pos = pos_data[0]
+            dst_pos = pos_data[1]
+            src_neg = neg_data[0]
+            dst_neg = neg_data[1]
+            link_pred_p = (emb[src_pos] * emb[dst_pos]).sum(dim=-1)
+            edge_label_p = torch.ones(src_pos.size(0))
+            link_pred_n = (emb[src_neg] * emb[dst_neg]).sum(dim=-1)
+            edge_label_n = torch.zeros(src_neg.size(0))
+            link_pred = torch.cat((link_pred_p, link_pred_n), dim=0)
+            edge_label = torch.cat((edge_label_p, edge_label_n), dim=0)
+            loss = self.criterion_link(link_pred, edge_label)
+            loss.backward()
+            optimizer.step()
+            total_loss += loss
+        if not isinstance(total_loss, float):
+            total_loss = float(total_loss)
+        return total_loss / len(train_data_loader), emb
 
-        src_pos = pos_data[0]
-        dst_pos = pos_data[1]
-        src_neg = neg_data[0]
-        dst_neg = neg_data[1]
-        link_pred_p = (emb[src_pos] * emb[dst_pos]).sum(dim=-1)
-        edge_label_p = torch.ones(src_pos.size(0))
-        link_pred_n = (emb[src_neg] * emb[dst_neg]).sum(dim=-1)
-        edge_label_n = torch.zeros(src_neg.size(0))
-        link_pred = torch.cat((link_pred_p, link_pred_n), dim=0)
-        edge_label = torch.cat((edge_label_p, edge_label_n), dim=0)
-        loss = self.criterion_link(link_pred, edge_label)
-        # this can be an alternative
-        # node_score = []
-        # for pos_node in src_pos:
-        #     list_pos_node = np.where(src_pos == pos_node)
-        #     pos_score = F.cosine_similarity(
-        #         emb[data.pos_edge_labels[0][list_pos_node]],
-        #         emb[data.pos_edge_labels[1][list_pos_node]],
-        #     )
-        #     link_pred_pos = torch.log(torch.sigmoid(pos_score))
+    def train_hand_formula(self, optimizer: torch.optim, data: Data):
+        self.model.train()
+        optimizer.zero_grad()
+        total_loss = 0
+        train_data_loader = data_loader(data)
+        for batch_data in tqdm.tqdm(train_data_loader):
+            data = re_generate_pos_neg(batch_data=batch_data)
+            emb, _ = self.model(data)
+            if "neg_edge_labels" in data.keys():
+                pos_data = data.pos_edge_labels
+                neg_data = data.neg_edge_labels
+            else:
+                pos_data = data.test_pos_edge_index
+                neg_data = data.test_neg_edge_index
+            src_pos = pos_data[0]
+            src_neg = neg_data[0]
+            node_score = []
+            for pos_node in src_pos:
+                list_pos_node = np.where(src_pos == pos_node)
+                pos_score = F.cosine_similarity(
+                    emb[data.pos_edge_labels[0][list_pos_node]],
+                    emb[data.pos_edge_labels[1][list_pos_node]],
+                )
+                link_pred_pos = torch.log(torch.sigmoid(pos_score))
 
-        #     list_neg_node = np.where(src_neg == pos_node)
-        #     neg_score = F.cosine_similarity(
-        #         emb[data.neg_edge_labels[0][list_neg_node]],
-        #         emb[data.neg_edge_labels[1][list_neg_node]],
-        #     )
-        #     link_pred_neg = self.Q * torch.mean(torch.log(torch.sigmoid(-neg_score)))
-        #     loss = torch.mean(-link_pred_pos - link_pred_neg).view(1, -1)
-        #     if not bool(loss.isnan()): # take care of nan values
-        #         node_score.append(loss)
-        # loss = torch.mean(torch.cat(node_score, 0))
-        loss.backward()
-        optimizer.step()
-        if not isinstance(loss, float):
-            return float(loss), emb
-        return loss
+                list_neg_node = np.where(src_neg == pos_node)
+                neg_score = F.cosine_similarity(
+                    emb[data.neg_edge_labels[0][list_neg_node]],
+                    emb[data.neg_edge_labels[1][list_neg_node]],
+                )
+                link_pred_neg = self.Q * torch.mean(torch.log(torch.sigmoid(-neg_score)))
+                loss = torch.mean(-link_pred_pos - link_pred_neg).view(1, -1)
+                if not bool(loss.isnan()): # take care of nan values
+                    node_score.append(loss)
+            loss = torch.mean(torch.cat(node_score, 0))
+            loss.backward()
+            optimizer.step()
+            total_loss += loss
+        if not isinstance(total_loss, float):
+            total_loss = float(total_loss)
+        return total_loss / len(train_data_loader), emb
+
 
     @torch.no_grad()
     def validate(self, data: Data):
@@ -182,13 +202,12 @@ class SupremeClusteringLink:
         neg_pred = (emb[neg_data[0]] * emb[neg_data[1]]).sum(dim=-1)
         pred = torch.cat([pos_pred, neg_pred], dim=0)
         loss = self.criterion_link(y, pred)
-        # y, pred = y.detach().cpu().numpy(), pred.detach().cpu().numpy()
-        # return roc_auc_score(y, pred), average_precision_score(y, pred), float(loss)
-        return float(loss)
+        y, pred = y.detach().cpu().numpy(), pred.detach().cpu().numpy()
+        return silhouette(emb), roc_auc_score(y, pred), average_precision_score(y, pred), float(loss)
 
 
 class EncoderInnerProduct:
-    # predict the link between two nodes. Actuallu predict the adjacency matrix
+    # predict the link between two nodes. Actually predict the adjacency matrix
     def __init__(self, encoder: SUPREME):
         self.encoder = encoder
         self.model = GAE(encoder=self.encoder)
@@ -197,22 +216,27 @@ class EncoderInnerProduct:
     def train(self, optimizer: torch.optim, data: Data):
         self.model.train()
         optimizer.zero_grad()
-        emb, _ = self.model.encode(data)
-        if "neg_edge_labels" in data.keys():
-            loss = self.model.recon_loss(
-                z=emb,
-                pos_edge_index=data.pos_edge_labels,
-                neg_edge_index=data.neg_edge_labels,
-            )
-        else:
-            loss = self.model.recon_loss(
-                z=emb, pos_edge_index=data.train_pos_edge_index
-            )
-        loss.backward()
-        optimizer.step()
-        if not isinstance(loss, float):
-            return float(loss), emb
-        return loss, emb
+        total_loss = 0
+        train_data_loader = data_loader(data)
+        for batch_data in tqdm.tqdm(train_data_loader):
+            data = re_generate_pos_neg(batch_data=batch_data)
+            emb, _ = self.model.encode(data)
+            if "neg_edge_labels" in data.keys():
+                loss = self.model.recon_loss(
+                    z=emb,
+                    pos_edge_index=data.pos_edge_labels,
+                    neg_edge_index=data.neg_edge_labels,
+                )
+            else:
+                loss = self.model.recon_loss(
+                    z=emb, pos_edge_index=data.train_pos_edge_index
+                )
+            loss.backward()
+            optimizer.step()
+            total_loss += loss
+        if not isinstance(total_loss, float):
+            total_loss = float(total_loss)
+        return total_loss/ len(train_data_loader), emb
 
     @torch.no_grad()
     def validate(self, data: Data):
@@ -233,10 +257,8 @@ class EncoderInnerProduct:
         neg_pred = self.model.decoder(emb, neg_data, sigmoid=True)
         pred = torch.cat([pos_pred, neg_pred], dim=0)
         loss = self.criterion(y, pred)
-        # y, pred = y.detach().cpu().numpy(), pred.detach().cpu().numpy()
-        # return roc_auc_score(y, pred), average_precision_score(y, pred),
-        return float(loss)
-
+        y, pred = y.detach().cpu().numpy(), pred.detach().cpu().numpy()
+        return silhouette(emb), roc_auc_score(y, pred), average_precision_score(y, pred), float(loss)
 
 class EncoderEntireInput:
     def __init__(self, encoder: SUPREME, decoder: Discriminator):
@@ -247,14 +269,19 @@ class EncoderEntireInput:
     def train(self, optimizer: torch.optim, data: Data):
         self.encoder.train()
         optimizer.encoder_loss.zero_grad()
-        emb, _ = self.encoder(data)
-        out_emb = self.decoder(emb)
-        loss = self.criterion(out_emb, data.x)
-        loss.backward()
-        optimizer.encoder_loss.step()
-        if not isinstance(loss, float):
-            return float(loss), emb
-        return loss
+        total_loss = 0
+        train_data_loader = data_loader(data)
+        for batch_data in tqdm.tqdm(train_data_loader):
+            data = re_generate_pos_neg(batch_data=batch_data)
+            emb, _ = self.encoder(data)
+            out_emb = self.decoder(emb)
+            loss = self.criterion(out_emb, data.x)
+            loss.backward()
+            optimizer.encoder_loss.step()
+            total_loss += loss
+        if not isinstance(total_loss, float):
+            total_loss = float(total_loss)
+        return total_loss/ len(train_data_loader), emb
 
     @torch.no_grad()
     def validate(self, data: Data):
@@ -262,5 +289,4 @@ class EncoderEntireInput:
         emb, _ = self.encoder(data)
         dec_out = self.decoder(emb)
         loss = self.criterion(dec_out, data.x)
-        # return r2_score(dec_out, data.x), mean_squared_error(dec_out, data.x), loss
-        return float(loss)
+        return silhouette(emb), r2_score(dec_out, data.x), mean_squared_error(dec_out, data.x), float(loss)
