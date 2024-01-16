@@ -249,7 +249,7 @@ def node2vec(data: Data):
 
 def random_walk_pos(data: Data) -> Tuple[Tensor, Tensor]:
     pos_neighbors = defaultdict()
-    neg_neighbors = defaultdict()
+    # neg_neighbors = defaultdict()
     for node in data.edge_index[0]:
         pos_nodes = []
         for _ in range(WALK_PER_NODE):
@@ -262,7 +262,7 @@ def random_walk_pos(data: Data) -> Tuple[Tensor, Tensor]:
                 cur_node = next_node
         pos_neighbors[int(node)] = pos_nodes
         # neg_neighbors[int(node)] = random_walk_neg(node, pos_nodes, data, cur_node)
-    return edge_index_from_dict(pos_neighbors)#, edge_index_from_dict(neg_neighbors)
+    return edge_index_from_dict(pos_neighbors)  # , edge_index_from_dict(neg_neighbors)
 
 
 def random_walk_neg(

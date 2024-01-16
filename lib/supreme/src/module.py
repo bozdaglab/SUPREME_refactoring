@@ -1,21 +1,23 @@
 # from typing import Union
 
 import logging
+
 import numpy as np
 import torch
 import torch.nn.functional as F
+import tqdm
 from dotenv import find_dotenv, load_dotenv
-from helper import silhouette, pos_neg_generator
+from helper import data_loader, re_generate_pos_neg, silhouette
 from learning_types import LearningTypes
 from set_logging import set_log_config
-from torch.nn import Linear, Module
-from torch_geometric.data import Data
-from sklearn.metrics import ( mean_squared_error, r2_score,
+from sklearn.metrics import (
     average_precision_score,
+    mean_squared_error,
+    r2_score,
     roc_auc_score,
 )
-from helper import data_loader, re_generate_pos_neg
-import tqdm
+from torch.nn import Linear, Module
+from torch_geometric.data import Data
 from torch_geometric.nn import GAE, GCNConv
 
 set_log_config()
@@ -25,6 +27,7 @@ load_dotenv(find_dotenv())
 DEVICE = torch.device("cpu")
 MAX_LOGSTD = 10
 EPS = 1e-15
+
 
 class SUPREME(Module):
     """
@@ -171,9 +174,11 @@ class SupremeClusteringLink:
                     emb[data.neg_edge_labels[0][list_neg_node]],
                     emb[data.neg_edge_labels[1][list_neg_node]],
                 )
-                link_pred_neg = self.Q * torch.mean(torch.log(torch.sigmoid(-neg_score)))
+                link_pred_neg = self.Q * torch.mean(
+                    torch.log(torch.sigmoid(-neg_score))
+                )
                 loss = torch.mean(-link_pred_pos - link_pred_neg).view(1, -1)
-                if not bool(loss.isnan()): # take care of nan values
+                if not bool(loss.isnan()):  # take care of nan values
                     node_score.append(loss)
             loss = torch.mean(torch.cat(node_score, 0))
             loss.backward()
@@ -182,7 +187,6 @@ class SupremeClusteringLink:
         if not isinstance(total_loss, float):
             total_loss = float(total_loss)
         return total_loss / len(train_data_loader), emb
-
 
     @torch.no_grad()
     def validate(self, data: Data):
@@ -203,7 +207,12 @@ class SupremeClusteringLink:
         pred = torch.cat([pos_pred, neg_pred], dim=0)
         loss = self.criterion_link(y, pred)
         y, pred = y.detach().cpu().numpy(), pred.detach().cpu().numpy()
-        return silhouette(emb), roc_auc_score(y, pred), average_precision_score(y, pred), float(loss)
+        return (
+            silhouette(emb),
+            roc_auc_score(y, pred),
+            average_precision_score(y, pred),
+            float(loss),
+        )
 
 
 class EncoderInnerProduct:
@@ -236,11 +245,10 @@ class EncoderInnerProduct:
             total_loss += loss
         if not isinstance(total_loss, float):
             total_loss = float(total_loss)
-        return total_loss/ len(train_data_loader), emb
+        return total_loss / len(train_data_loader), emb
 
     @torch.no_grad()
     def validate(self, data: Data):
-
         self.model.eval()
         emb, _ = self.model.encode(data)
         if "neg_edge_labels" in data.keys():
@@ -258,7 +266,13 @@ class EncoderInnerProduct:
         pred = torch.cat([pos_pred, neg_pred], dim=0)
         loss = self.criterion(y, pred)
         y, pred = y.detach().cpu().numpy(), pred.detach().cpu().numpy()
-        return silhouette(emb), roc_auc_score(y, pred), average_precision_score(y, pred), float(loss)
+        return (
+            silhouette(emb),
+            roc_auc_score(y, pred),
+            average_precision_score(y, pred),
+            float(loss),
+        )
+
 
 class EncoderEntireInput:
     def __init__(self, encoder: SUPREME, decoder: Discriminator):
@@ -281,7 +295,7 @@ class EncoderEntireInput:
             total_loss += loss
         if not isinstance(total_loss, float):
             total_loss = float(total_loss)
-        return total_loss/ len(train_data_loader), emb
+        return total_loss / len(train_data_loader), emb
 
     @torch.no_grad()
     def validate(self, data: Data):
@@ -289,4 +303,9 @@ class EncoderEntireInput:
         emb, _ = self.encoder(data)
         dec_out = self.decoder(emb)
         loss = self.criterion(dec_out, data.x)
-        return silhouette(emb), r2_score(dec_out, data.x), mean_squared_error(dec_out, data.x), float(loss)
+        return (
+            silhouette(emb),
+            r2_score(dec_out, data.x),
+            mean_squared_error(dec_out, data.x),
+            float(loss),
+        )

@@ -82,7 +82,6 @@ def select_model(
         LearningTypes.classification.name,
         LearningTypes.regression.name,
     ]:
-
         if super_unsuper_model == LearningTypes.regression.name:
             out_size = 1
         elif super_unsuper_model == LearningTypes.classification.name:
@@ -107,4 +106,3 @@ def select_model(
                 in_size=in_size, hid_size=hid_size, out_size=out_size
             )
             return EncoderEntireInput(encoder=encoder, decoder=decoder)
-
