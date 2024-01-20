@@ -31,3 +31,6 @@ pre-commit install
 
 ```
 ### run this to clean docker espace sudo docker container prune -f && sudo docker image prune -f docker system prune -a
+
+### How to run.
+Organize your multi-omics data by placing it in the data/sample_data/raw directory. Modify the prepare_data function within the pre_process_data.py module, specifically change lines 60 to 92. Then, execute main.py.
