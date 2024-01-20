@@ -1,7 +1,6 @@
 import logging
 import os
-
-# import statistics
+from collections import defaultdict
 from functools import partial
 from itertools import product
 from typing import Dict, Optional
@@ -12,14 +11,14 @@ import ray
 import torch
 from feature_selections import select_features
 from helper import row_col_ratio
-from learning_types import LearningTypes  # SuperUnsuperModel
+from learning_types import LearningTypes, SuperUnsuperModel
 from ray import train, tune
 from ray.train import report
 from ray.tune.analysis.experiment_analysis import ExperimentAnalysis
 from ray.tune.schedulers import ASHAScheduler
 from selected_models import select_model, select_optimizer
 from set_logging import set_log_config
-from settings import (  # X_TIME2,
+from settings import (
     EMBEDDINGS,
     GRAPH_DATA,
     LEARNING,
@@ -36,7 +35,6 @@ set_log_config()
 logger = logging.getLogger()
 DEVICE = torch.device("cpu")
 
-
 config = {
     "hidden_size": tune.choice([2**i for i in range(4, 5)]),
     "lr": tune.loguniform(1e-4, 1e-3),
@@ -46,7 +44,7 @@ scheduler = ASHAScheduler(
     metric="loss",
     mode="min",
     max_t=20,
-    grace_period=1,
+    grace_period=20,
     reduction_factor=2,
 )
 
@@ -55,8 +53,6 @@ scheduler = ASHAScheduler(
 def node_feature_generation(
     new_dataset: Dict,
     labels: Dict,
-    path_features: str,
-    path_embeggings: str,
     feature_type: Optional[str] = None,
 ) -> Tensor:
     """
@@ -72,36 +68,31 @@ def node_feature_generation(
     Return:
         Concatenated features from different omics file
     """
-    is_first = True
-    selected_features = []
-    for _, feat in new_dataset.items():
-        if row_col_ratio(feat):
-            # add an inner remote function and use get to get the result of the inner one before proceding
-            feat, final_features = select_features(
-                application_train=feat, labels=labels, feature_type=feature_type
-            )
-            selected_features.extend(final_features)
-            if not any(feat):
-                continue
+    selected_features = defaultdict(list)
+    selected_features["feature_type"] = feature_type
+    result = [
+        features_selection.remote(feat, selected_features, labels, feature_type)
+        for _, feat in new_dataset.items()
+    ]
+
+    return ray.get(result)
+
+
+@ray.remote(num_cpus=os.cpu_count())
+def features_selection(feat, selected_features, labels, feature_type):
+    if row_col_ratio(feat):
+        feat, final_features = select_features(
+            application_train=feat, labels=labels, feature_type=feature_type
+        )
+        selected_features["features"].extend(final_features)
+        if any(feat):
             values = torch.tensor(feat.values, device=DEVICE)
-        else:
-            selected_features.extend(feat.columns)
-            values = feat.values
-        if is_first:
-            new_x = torch.tensor(values, device=DEVICE).float()
-            is_first = False
-        else:
-            new_x = torch.cat(
-                (new_x, torch.tensor(values, device=DEVICE).float()), dim=1
-            )
-    if not os.path.exists(path_features):
-        os.makedirs(path_features)
-    pd.DataFrame(selected_features).to_pickle(
-        path_features / f"selected_features_{feature_type}.pkl"
-    )
-    if not os.path.exists(path_embeggings):
-        os.makedirs(path_embeggings)
-    pd.DataFrame(new_x).to_pickle(path_embeggings / f"embeddings_{feature_type}.pkl")
+    else:
+        selected_features["features"].extend(feat.columns.tolist())
+        values = feat.values
+    selected_features["tensors"].append(torch.tensor(values, device=DEVICE).float())
+
+    return selected_features
 
 
 def node_embedding_generation() -> None:
@@ -124,6 +115,7 @@ def node_embedding_generation() -> None:
         for direc, _, files in os.walk(GRAPH_DATA)
         if files
         for file in files
+        if "train_data" in direc
     ]
     for model_choice in LEARNING:
         emb_path = EMBEDDINGS / model_choice
@@ -132,9 +124,9 @@ def node_embedding_generation() -> None:
                 ready_data, UNSUPERVISED_MODELS
             ):
                 base_path = data_gen_types.split("graph_data/")[1]
-                folder_path, file_path = base_path.split("/")
+                folder_path, file_name, _, file_path = base_path.split("/")
                 name = f"{folder_path}_{unsupervised_model}"
-                final_path = emb_path / name
+                final_path = emb_path / name / file_name
                 if not os.path.exists(final_path):
                     os.makedirs(final_path)
                 list_dir = os.listdir(final_path)
@@ -218,35 +210,52 @@ def train_steps(
     model_choice: str,
     data_generation_types: Optional[str] = None,
     super_unsuper_model: Optional[str] = None,
+    sch_lr: bool = False,
 ) -> ExperimentAnalysis:
     """
     This function craete the loss funciton, train and validate the model
     """
     if not super_unsuper_model:
         super_unsuper_model = model_choice
-    data = torch.load(data_generation_types)
-    # best_ValidLoss = np.Inf
-    out_size = 32  # learning_model.model_loss_output(model_choice=model_choice)
-    in_size = data.x.shape[1]
+    train_folder_path = "/".join(data_generation_types.split("/")[:-1])
+    val_folder_path = train_folder_path.replace("train_data", "valid_data")
+    train_files = os.listdir(train_folder_path)
+    val_files = os.listdir(val_folder_path)
+    if len(train_files) > 10:
+        train_data = [
+            torch.load(os.path.join(train_folder_path, file)) for file in train_files
+        ]
+        val_data = [
+            torch.load(os.path.join(val_folder_path, file)) for file in val_files
+        ]
+        in_size = train_data[0].x.shape[0]
+    else:
+        train_data = torch.load(data_generation_types)
+        val_data = torch.load(data_generation_types.replace("train_data", "valid_data"))
+        in_size = train_data.x.shape[1]
+
     min_valid_loss = np.Inf
-    this_emb = None
-    # model_accuracy = 0
-    # if super_unsuper_model == SuperUnsuperModel.entireinput.name:
-    #     metric_1 = "r2_square"
-    #     metric_2 = "mean_square_error"
-    # else:
-    #     metric_1 = "auc"
-    #     metric_2 = "ap"
+    silhouette_score = 0
+    metric_1_score = 0
+    if super_unsuper_model == SuperUnsuperModel.entireinput.name:
+        metric_1 = "r2_square"
+        metric_2 = "mean_square_error"
+    else:
+        metric_1 = "auc"
+        metric_2 = "ap"
     model = select_model(
         in_size=in_size,
         hid_size=config["hidden_size"],
-        out_size=out_size,
         super_unsuper_model=super_unsuper_model,
     )
-    # av_valid_losses = []
+    this_emb = torch.zeros(12)
     optimizer = select_optimizer(
         optimizer_type=OPTIM, model=model, learning_rate=config["lr"]
-    )  # add OPTIM to the actual function
+    )
+    if sch_lr:
+        scheduler_lr = torch.optim.lr_scheduler.ExponentialLR(
+            optimizer=optimizer, gamma=0.95
+        )
     checkpoint = train.get_checkpoint()
 
     if checkpoint:
@@ -254,16 +263,21 @@ def train_steps(
             checkpoint_dict = torch.load(os.path.join(checkpoint_dir, "checkpoint.pt"))
             epoch = checkpoint_dict["epoch"] + 1
             # model.load_state_dict(checkpoint_dict["model_state_dict"])
-
+    patience_count = 0
     for epoch in range(MAX_EPOCHS):
-        loss, emb = model.train(optimizer, data)
-        val_loss = model.validate(data=data)
-
+        loss, emb = model.train(optimizer, train_data)
+        silhouette, metric1, metric2, val_loss = model.validate(data=val_data)
         logger.info(
-            f"Epoch: {epoch}, train_loss: {loss}, val_loss: {val_loss}",
+            f"Epoch: {epoch}, train_loss: {loss}, val_loss: {val_loss},",
+            f"{metric_1}: {metric1}, {metric_2}: {metric2}, silhouette: {silhouette}",
         )
-        if loss < min_valid_loss:  # and auc > model_accuracy:
-            # model_accuracy = auc
+        if sch_lr:
+            scheduler_lr.step()
+        if loss < min_valid_loss and (
+            silhouette > silhouette_score or metric1 > metric_1_score
+        ):
+            silhouette_score = silhouette
+            metric_1_score = metric1
             min_valid_loss = loss
             patience_count = 0
             this_emb = emb
@@ -274,16 +288,10 @@ def train_steps(
         metrics = {
             "loss": min_valid_loss,
             "epoch": epoch,
-            "embeddings": this_emb.detach().cpu().numpy(),
+            "embeddings": this_emb.detach().cpu().numpy() if this_emb.dim() > 1 else [],
+            "silhouette": min_valid_loss,
+            "metric_1_score": metric1,
         }
         report(
             metrics=metrics,
         )
-
-    # av_valid_losses.append(min_valid_loss)
-
-    # av_valid_loss = round(statistics.median(av_valid_losses), 3)
-    # if av_valid_loss < best_ValidLoss:
-    #     best_ValidLoss = av_valid_loss
-    #     selected_emb = this_emb
-    #     selected_emb = selected_emb.detach()

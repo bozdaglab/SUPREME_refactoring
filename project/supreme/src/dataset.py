@@ -4,38 +4,36 @@ import os.path as osp
 from collections import defaultdict
 from functools import partial
 from itertools import product
-from typing import Dict, List, Optional
+from typing import Dict, List
 
-import numpy as np
 import pandas as pd
 import ray
 import torch
-from helper import masking_indexes, pos_neg, random_split, read_labels
+from helper import pos_neg, random_split, read_labels
 from learning_types import SelectModel
 from node_generation import node_feature_generation
-from pre_process_data import prepare_data, save_pickle, similarity_matrix_generation
+from pre_process_data import (
+    node2vec,
+    prepare_data,
+    random_walk_pos,
+    save_pickle_embeddings,
+    save_pickle_features,
+    similarity_matrix_generation,
+)
 from set_logging import set_log_config
 from settings import (
     BASE_DATAPATH,
-    CONTEXT_SIZE,
     DATA,
     EDGES,
-    EMBEDDING_DIM,
     PATH_EMBEDDIGS,
     PATH_FEATURES,
     POS_NEG_MODELS,
     SELECTION_METHOD,
-    SPARSE,
     STAT_METHOD,
-    WALK_LENGHT,
-    WALK_PER_NODE,
-    P,
-    Q,
 )
-from sklearn.model_selection import RepeatedStratifiedKFold, train_test_split
+from sklearn.model_selection import train_test_split
 from torch import Tensor
 from torch_geometric.data import Data, Dataset
-from torch_geometric.nn import Node2Vec
 from torch_geometric.utils import (
     coalesce,
     negative_sampling,
@@ -82,7 +80,7 @@ class BioDataset(Dataset):
         self.root = root
         files = [file.replace(".txt", ".pkl") for file in self.file_name]
         if not self.file_exist(files):
-            self.run_prepare_data()
+            prepare_data(self.raw_paths, DATA)
         self.data_dir = [osp.join(DATA, file) for file in os.listdir(DATA)]
         ray.init(num_cpus=os.cpu_count())
         self.run_node_feature_generation()
@@ -90,9 +88,6 @@ class BioDataset(Dataset):
 
     def file_exist(self, files: List[str]) -> bool:
         return len(files) != 0 and all([osp.exists(DATA / file) for file in files])
-
-    def run_prepare_data(self) -> None:
-        prepare_data(self.raw_paths, DATA)
 
     def run_node_feature_generation(self):
         if osp.exists(PATH_FEATURES) and len(SELECTION_METHOD) == len(
@@ -117,8 +112,6 @@ class BioDataset(Dataset):
                     new_dataset=sample_data,
                     labels=labels,
                     feature_type=feature_type,
-                    path_features=PATH_FEATURES,
-                    path_embeggings=PATH_EMBEDDIGS,
                 )
                 for feature_type in feature_selections
             ]
@@ -126,8 +119,8 @@ class BioDataset(Dataset):
                 features_result_ray_done, features_result_ray_not_done = ray.wait(
                     features_result_ray_not_done
                 )
-            final_result_features_selections = ray.get(features_result_ray_done)
-            save_pickle(final_result=final_result_features_selections[0])
+                final_result_features_selections = ray.get(features_result_ray_done)
+                save_pickle_features(final_result=final_result_features_selections[0])
 
     def run_similarity_matrix_generation(self):
         if osp.exists(EDGES) and sum(
@@ -144,7 +137,7 @@ class BioDataset(Dataset):
                 embedding_result_ray_not_done
             )
             final_result_emb = ray.get(embedding_result_ray_done)
-            save_pickle(final_result=final_result_emb[0])
+            save_pickle_embeddings(final_result=final_result_emb[0])
 
     def read_sample_data(self) -> Dict:
         sample_data = defaultdict()
@@ -164,7 +157,7 @@ class BioDataset(Dataset):
             if isinstance(new_x, pd.DataFrame):
                 new_x = torch.tensor(new_x.values, dtype=torch.float32)
             for file in os.listdir(EDGES / stat):
-                file_path = f"{folder_path}_{file.split('.')[0]}"
+                file_path = f"{file.split('.')[0]}"
                 dir = os.path.join(self.processed_dir, "graph_data", folder_path)
                 edge_index = pd.read_pickle(EDGES / stat / file)
                 generator(
@@ -179,50 +172,42 @@ class BioDataset(Dataset):
 
     def create_without_loader(self, new_x, edge_index, dir, file_path, labels=None):
         for data_generation_types in POS_NEG_MODELS:
-            data = self.create_data(
+            self.create_data(
                 new_x=new_x,
                 data_generation_types=data_generation_types,
                 edge_index=edge_index,
+                dir=dir,
+                file_path=file_path,
             )
-            dir_update = f"{dir}_{data_generation_types}"
-            if not os.path.exists(dir_update):
-                os.makedirs(dir_update)
-            torch.save(data, osp.join(dir_update, f"{file_path}.pt"))
 
     def create_with_loader(self, new_x, labels, edge_index, dir, file_path):
         graphs = []
-        for idx, patient in enumerate(new_x):
-            node_features = patient
-            label = labels["CLAUDIN_SUBTYPE"][labels.index == idx].values
-            data = Data(x=node_features, edge_index=edge_index, y=label)
+        for idx, patient_feat in enumerate(new_x):
+            node_features = patient_feat
+            label = labels[labels.index == idx].values
+            data = self.make_data(
+                new_x=node_features, edge_index=edge_index, labels=label
+            )
             graphs.append(data)
-        data, slice = self.collate(data)
-        torch.save((data, slice), dir / f"data_{idx}.pt")
-        # create dataloader
-        # for stat in os.listdir(EDGES):
-        #     final_correlation = defaultdict()
-        #     for file in os.listdir(EDGES / stat):
-        #         final_correlation[file] = pd.read_pickle(EDGES / stat / file)
-        #     new_x = pd.read_pickle(PATH_EMBEDDIGS / os.listdir(PATH_EMBEDDIGS)[0])
-        #     if isinstance(new_x, pd.DataFrame):
-        #         new_x = torch.tensor(new_x.values, dtype=torch.float32)
-        #     lables = pd.read_pickle(LABELS / os.listdir(LABELS)[0])
-        #     base_dir = BASE_DATAPATH / stat
-        #     for file_name, edge_index in final_correlation.items():
-        #         dataset_dir = base_dir / file_name
-        #         self.make_directories(dataset_dir)
-        #         graphs = []
-        #         for idx, patient in enumerate(new_x):
-        #             node_features = patient
-        #             # edge_index = np.where(edges["Patient_1"] == idx)
-        #             label = labels["CLAUDIN_SUBTYPE"][lables.index == idx].values
-        #             data =  Data(x=node_features, edge_index=edge_index, y=label)
-        #             graphs.append(data)
-        #         data, slice = self.collate(data)
-        #         torch.save((data, slice), dataset_dir / f"data_{idx}.pt")
+        train_valid_idx, test_idx = random_split(new_x=new_x)
+        train_idx, valid_idx = train_test_split(train_valid_idx.indices, test_size=0.25)
+        for indexs, name in zip(
+            [train_idx, valid_idx, test_idx.indices],
+            ["train_data", "valid_data", "test_data"],
+        ):
+            new_dir = osp.join(dir, file_path, name)
+            if not osp.exists(new_dir):
+                os.makedirs(new_dir)
+            for idx in indexs:
+                torch.save(graphs[idx], osp.join(new_dir, f"{idx}.pt"))
 
     def create_data(
-        self, new_x, data_generation_types: str, edge_index: pd.DataFrame
+        self,
+        new_x,
+        data_generation_types: str,
+        edge_index: pd.DataFrame,
+        dir,
+        file_path,
     ) -> Data:
         """
         Create a data object by adding features, edge_index, edge_attr.
@@ -238,46 +223,44 @@ class BioDataset(Dataset):
             A data object ready to pass to GCN
         """
         train_valid_idx, test_idx = random_split(new_x=new_x)
+        train_idx, valid_idx = train_test_split(train_valid_idx.indices, test_size=0.25)
         if isinstance(edge_index, dict):
             edge_index = pd.DataFrame(edge_index).T
-        # edge_index = process_data(edge_index=edge_index)
-        # use index to mask inorder to generate the val, test, and train
-        # index_to_mask (e.g, index_to_mask(train_index, size=y.size(0)))
-        data = self.make_data(new_x=new_x, edge_index=edge_index)
-        if data_generation_types == SelectModel.node2vec.name:
-            node2vec = Node2Vec(
-                edge_index=data.edge_index,
-                embedding_dim=EMBEDDING_DIM,
-                walk_length=WALK_LENGHT,
-                context_size=CONTEXT_SIZE,
-                walks_per_node=WALK_PER_NODE,
-                p=P,
-                q=Q,
-                sparse=SPARSE,
-            ).to(DEVICE)
-            pos, neg = node2vec.sample([10, 15])  # batch size
-            data.pos_edge_labels = torch.tensor(pos.T, device=DEVICE).long()
-            data.neg_edge_labels = torch.tensor(neg.T, device=DEVICE).long()
-        # elif data_generation_types == SelectModel.similarity_based.name:
-        #     data.pos_edge_labels = pos_neg(edge_index, "link", 1)
-        #     data.neg_edge_labels = pos_neg(edge_index, "link", 0)
-        elif data_generation_types == SelectModel.train_test.name:
-            data.num_nodes = maybe_num_nodes(data.edge_index)
-            edge_index = data.edge_index
-            edge_attr = data.edge_attr
-            data = train_test_split_edges(data=data)
-            data.edge_index = edge_index
-            data.edge_attr = edge_attr
-        elif data_generation_types == SelectModel.similarity_based.name:
-            data.pos_edge_labels = pos_neg(edge_index, "link", 1)
-            data.neg_edge_labels = negative_sampling(
-                data.pos_edge_labels, new_x.size(0)
-            )
-        return self.train_test_valid(
-            data=data, train_valid_idx=train_valid_idx, test_idx=test_idx
-        )
+        for indexs, name in zip(
+            [train_idx, valid_idx, test_idx.indices],
+            ["train_data", "valid_data", "test_data"],
+        ):
+            edge_index_indexs = edge_index[
+                edge_index["source"].isin(indexs) & edge_index["target"].isin(indexs)
+            ].reset_index(drop=True)
+            data = self.make_data(new_x=new_x, edge_index=edge_index_indexs)
+            if data_generation_types == SelectModel.node2vec.name:
+                data = node2vec(data)
+            elif data_generation_types == SelectModel.randomwalk.name:
+                data.pos_edge_labels = random_walk_pos(data)
+                data.neg_edge_labels = negative_sampling(
+                    data.pos_edge_labels, new_x.size(0)
+                )
+                # for short data, the negative might be empty
+                # data.pos_edge_labels, data.neg_edge_labels = random_walk_pos(data)
+            if data_generation_types == SelectModel.train_test.name:
+                data.num_nodes = maybe_num_nodes(data.edge_index)
+                edge_in = data.edge_index
+                edge_attr = data.edge_attr
+                data = train_test_split_edges(data=data)
+                data.edge_index = edge_in
+                data.edge_attr = edge_attr
+            elif data_generation_types == SelectModel.similarity_based.name:
+                data.pos_edge_labels = pos_neg(edge_index_indexs, "link", 1)
+                data.neg_edge_labels = negative_sampling(
+                    data.pos_edge_labels, new_x.size(0)
+                )
+            dir_update = osp.join(f"{dir}_{data_generation_types}", file_path, name)
+            if not os.path.exists(dir_update):
+                os.makedirs(dir_update)
+            torch.save(data, osp.join(dir_update, f"{file_path}.pt"))
 
-    def make_data(self, new_x: Tensor, edge_index: pd.DataFrame) -> Data:
+    def make_data(self, new_x: Tensor, edge_index: pd.DataFrame, labels=None) -> Data:
         """
         Generate a data object that holds node features, edge_index and edge_attr.
 
@@ -298,80 +281,16 @@ class BioDataset(Dataset):
                 device=DEVICE,
             ).long(),
             edge_attr=torch.tensor(
-                edge_index[edge_index.columns[3]].transpose().values,
+                edge_index[edge_index.columns[2]].transpose().values,
                 device=DEVICE,
             ).float(),
         )
-        edge_index, _ = remove_self_loops(data.edge_index)
-        data.edge_index = coalesce(edge_index=edge_index, num_nodes=new_x.shape[0])
-        return data
-
-    def train_test_valid(
-        self,
-        data: Data,
-        train_valid_idx: Tensor,
-        test_idx: Tensor,
-        labels: Optional[pd.DataFrame] = None,
-    ) -> Data:
-        """
-        This function adds train, test, and validation data to the data object.
-        If a label is available, it applies a Repeated Stratified K-Fold cross-validator.
-        Otherwise, split the tensor into random train and test subsets.
-
-        Parameters:
-        -----------
-        data:
-            Data object
-        train_valid_idx:
-            train validation indexes
-        test_idx:
-            test indexes
-        labels:
-            Dataset labels
-
-        Return:
-            A data object that holds train, test, and validation indexes
-        """
         if labels is not None:
-            try:
-                X = data.x[train_valid_idx.indices]
-                y = data.y[train_valid_idx.indices]
-            except:
-                X = data.x[train_valid_idx]
-                y = data.y[train_valid_idx]
-            # y_ph = labels.iloc[:, 3][train_valid_idx.indices]
-
-            rskf = RepeatedStratifiedKFold(n_splits=4, n_repeats=1)
-            for train_part, valid_part in rskf.split(X, y):
-                try:
-                    train_idx = np.array(train_valid_idx.indices)[train_part]
-                    valid_idx = np.array(train_valid_idx.indices)[valid_part]
-                except:
-                    train_idx = np.array(train_valid_idx)[train_part]
-                    valid_idx = np.array(train_valid_idx)[valid_part]
-                break
-
-        elif "val_pos_edge_index" in data.keys():
-            return data
-        else:
-            train_idx, valid_idx = train_test_split(
-                train_valid_idx.indices, test_size=0.25
-            )
-
-        data.valid_mask = torch.tensor(
-            masking_indexes(data=data, indexes=valid_idx), device=DEVICE
+            data.y = torch.tensor(labels)
+        edge_index, _ = remove_self_loops(data.edge_index)
+        data.edge_index, data.edge_attr = coalesce(
+            edge_index=edge_index, edge_attr=data.edge_attr, num_nodes=new_x.shape[0]
         )
-        data.train_mask = torch.tensor(
-            masking_indexes(data=data, indexes=train_idx), device=DEVICE
-        )
-        try:
-            data.test_mask = torch.tensor(
-                masking_indexes(data=data, indexes=test_idx), device=DEVICE
-            )
-        except (KeyError, TypeError):
-            data.test_mask = torch.tensor(
-                masking_indexes(data=data, indexes=test_idx.indices), device=DEVICE
-            )
         return data
 
     def len(self):

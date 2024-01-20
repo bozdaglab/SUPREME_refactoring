@@ -25,12 +25,12 @@ class FeatureSelectionType(Enum):
 
 class SelectModel(Enum):
     node2vec = auto()
+    randomwalk = auto()
     similarity_based = auto()
     train_test = auto()
 
 
 class SuperUnsuperModel(Enum):
-    discriminator = auto()
     linkprediction = auto()
     encoderinproduct = auto()
     entireinput = auto()

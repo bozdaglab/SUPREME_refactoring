@@ -1,3 +1,4 @@
+"ray[tune]"
 Boruta
 fastparquet
 feature_engine
@@ -14,7 +15,6 @@ pyarrow
 pytest==5.4.1
 python-dotenv==0.19.1
 ray
-ray[tune]
 sklearn-genetic
 torch
 torch_geometric

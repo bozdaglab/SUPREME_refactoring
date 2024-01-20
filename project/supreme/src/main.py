@@ -9,7 +9,7 @@ from dotenv import find_dotenv, load_dotenv
 from helper import read_labels
 from node_generation import node_embedding_generation
 from set_logging import set_log_config
-from settings import BASE_DATAPATH, EMBEDDINGS, LEARNING
+from settings import BASE_DATAPATH, EMBEDDINGS, LEARNING, ROOT
 from train_mls import train_ml_model
 
 load_dotenv(find_dotenv())
@@ -33,7 +33,7 @@ def combine_trails(base_path: str) -> List[List[int]]:
 logger.info("SUPREME is running..")
 
 BioDataset(
-    root="data/sample_data/",
+    root=ROOT,
     raw_directories=["graph_data"],
     file_name=os.listdir(f"{BASE_DATAPATH}/raw"),
 )

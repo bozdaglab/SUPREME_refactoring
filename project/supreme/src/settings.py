@@ -13,6 +13,7 @@ LEARNING = json.loads(os.environ.get("LEARNING"))
 OPTIONAL_FEATURE_SELECTION = bool(
     strtobool(os.environ.get("OPTIONAL_FEATURE_SELECTION"))
 )
+ROOT = os.environ.get("ROOT")
 INT_MOTHOD_CLUSTERING = json.loads(os.environ.get("INT_MOTHOD_CLUSTERING"))
 INT_MOTHOD_CLASSIFICATION = json.loads(os.environ.get("INT_MOTHOD_CLASSIFICATION"))
 NUMBER_FEATURES = [50]
@@ -22,16 +23,14 @@ SELECTION_METHOD = [
     "RFE",
     # "SelectFromModel",
     # "BorutaPy",
-    # "pearson",
+    "pearson",
+    # "SelectBySingleFeaturePerformance",
+    # "SelectByShuffling",
+    # "GeneticSelectionCV",
+    # "SequentialFeatureSelector",
     # ["BorutaPy", "pearson", "RFE", "SelectFromModel", "lasso"],
 ]
-# ]
-# "SelectBySingleFeaturePerformance",
-# "SelectByShuffling",
-#  "GeneticSelectionCV",
-#  "SequentialFeatureSelector",
-METHYLATION_P = float(os.environ.get("METHYLATION_P"))
-METHYLATION_S = float(os.environ.get("METHYLATION_S"))
+METHYLATION = float(os.environ.get("METHYLATION"))
 MICRO = float(os.environ.get("MICRO"))
 CNA = float(os.environ.get("CNA"))
 MODELS_B = ["RF"]
@@ -48,7 +47,6 @@ STAT_METHOD = json.loads(os.environ.get("STAT_METHOD"))
 LEARNING_RATE = json.loads(os.environ.get("LEARNING_RATE"))
 HIDDEN_SIZE = json.loads(os.environ.get("HIDDEN_SIZE"))
 X_TIME = int(os.environ.get("X_TIME"))
-DISCRIMINATOR = bool(os.environ.get("DISCRIMINATOR"))
 NODE2VEC = bool(os.environ.get("NODE2VEC"))
 SIMILARITY_BASED = bool(os.environ.get("SIMILARITY_BASED"))
 TRAIN_TEST = bool(os.environ.get("TRAIN_TEST"))
@@ -85,7 +83,5 @@ PATH_FEATURES = DATA.parent / "selected_features"
 PATH_EMBEDDIGS = DATA.parent / "selected_features_embeddings"
 
 NODE_NETWORKS = FEATURE_NETWORKS_INTEGRATION.copy()
-
-
 FEATURE_SELECTION_PER_NETWORK = [False, False, False]
 TOP_FEATURES_PER_NETWORK = [50, 50, 50]

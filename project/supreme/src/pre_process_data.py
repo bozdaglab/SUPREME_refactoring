@@ -1,8 +1,8 @@
 import logging
 import os
 import pickle
-from collections import defaultdict
-from functools import partial
+import random
+from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Dict, List, Tuple, Union
 
@@ -12,6 +12,7 @@ import ray
 import torch
 from helper import (
     chnage_connections_thr,
+    edge_index_from_dict,
     get_stat_methos,
     nan_checker,
     search_dictionary,
@@ -20,13 +21,29 @@ from networkx.readwrite import json_graph
 from pre_processings import pre_processing
 from scipy.stats import pearsonr, spearmanr
 from set_logging import set_log_config
-from settings import EDGES, LABELS
+from settings import (
+    CONTEXT_SIZE,
+    EDGES,
+    EMBEDDING_DIM,
+    LABELS,
+    PATH_EMBEDDIGS,
+    PATH_FEATURES,
+    SPARSE,
+    WALK_LENGHT,
+    WALK_PER_NODE,
+    P,
+    Q,
+)
 from sklearn.preprocessing import LabelEncoder
+from torch import Tensor
+from torch_geometric.data import Data
+from torch_geometric.nn import Node2Vec
 from torch_geometric.utils import remove_self_loops
 
 logger = logging.getLogger()
 set_log_config()
 FUNC_NAME = "only_one"
+DEVICE = torch.device("cpu")
 
 
 def process_data(edge_index: Dict):
@@ -125,16 +142,12 @@ def compute_similarity(
     data: pd.DataFrame,
     file_name: str,
     stat: str,
-    func_name: str,
     stat_model: Union[pearsonr, spearmanr],
     correlation_dictionary: Dict,
     path_dir: Path,
 ) -> Dict:
     logger.info(f"Start generating similarity matrix for {stat}, {file_name}...")
-    thr = chnage_connections_thr(file_name, stat)
-    func = select_generator(func_name, thr)
     correlation_dictionary["final_path"] = path_dir / file_name
-    correlation_dictionary["func_name"] = func_name
     for ind_i, patient_1 in data.iterrows():
         for ind_j, patient_2 in data.iterrows():
             if ind_i == ind_j:
@@ -145,12 +158,16 @@ def compute_similarity(
                 ).statistic
             except AttributeError:
                 similarity_score = stat_model(patient_1.values, patient_2.values)[0]
-            func(ind_i, ind_j, similarity_score, correlation_dictionary)
+            correlation_dictionary[f"{ind_i}_{ind_j}"] = {
+                "source": ind_i,
+                "target": ind_j,
+                "Similarity Score": similarity_score,
+            }
     return correlation_dictionary
 
 
 @ray.remote(num_cpus=os.cpu_count())
-def similarity_matrix_generation(new_dataset: Dict, stat, func_name=FUNC_NAME):
+def similarity_matrix_generation(new_dataset: Dict, stat):
     stat_model = get_stat_methos(stat)
     path_dir = EDGES / stat
     make_directories(path_dir)
@@ -160,7 +177,6 @@ def similarity_matrix_generation(new_dataset: Dict, stat, func_name=FUNC_NAME):
             data,
             file_name,
             stat,
-            func_name,
             stat_model,
             correlation_dictionary,
             path_dir,
@@ -170,76 +186,109 @@ def similarity_matrix_generation(new_dataset: Dict, stat, func_name=FUNC_NAME):
     return ray.get(result)
 
 
-def save_pickle(final_result: List[Dict]) -> None:
+def save_pickle_features(final_result: List[Dict]):
+    selected_features = []
+    feature_type = final_result[0]["feature_type"]
+    is_first = True
     for result in final_result:
-        func_name = result["func_name"]
+        selected_features.extend(result["features"])
+        tensors = result["tensors"][0]
+        if is_first:
+            new_x = torch.tensor(tensors, device=DEVICE).float()
+            is_first = False
+        else:
+            new_x = torch.cat(
+                (new_x, torch.tensor(tensors, device=DEVICE).float()), dim=1
+            )
+    if not os.path.exists(PATH_FEATURES):
+        os.makedirs(PATH_FEATURES)
+    pd.DataFrame(selected_features).to_pickle(
+        PATH_FEATURES / f"selected_features_{feature_type}.pkl"
+    )
+    if not os.path.exists(PATH_EMBEDDIGS):
+        os.makedirs(PATH_EMBEDDIGS)
+    pd.DataFrame(new_x).to_pickle(PATH_EMBEDDIGS / f"embeddings_{feature_type}.pkl")
+
+
+def save_pickle_embeddings(final_result: List[Dict], func_name=False) -> None:
+    for result in final_result:
         path = Path(result["final_path"]).parts
         file_name = path[-1]
-        path_dir = Path(*path[:-1])
-        result.pop("func_name")
         result.pop("final_path")
-        if func_name == "only_one_nx":
-            result["directed"] = False
-            result["multigraph"] = False
-            result["graph"] = {}
-            with open(path_dir / f"similarity_{file_name}.pkl", "wb") as pickle_file:
-                pickle.dump(result, pickle_file)
-        elif any(result):
-            pd.DataFrame(
-                result.values(),
-                columns=list(result.items())[0][1].keys(),
-            ).to_pickle(path_dir / f"similarity_{file_name}.pkl")
+        path_dir = Path(*path[:-1])
+        final_data = pd.DataFrame(
+            result.values(),
+            columns=list(result.items())[0][1].keys(),
+        )
+        if func_name:
+            thr = chnage_connections_thr(file_name)
+        else:
+            thr = final_data["Similarity Score"].quantile(0.65)
+        final_data["link"] = [
+            1 if val >= thr else 0 for val in final_data["Similarity Score"]
+        ]
+        final_data.to_pickle(path_dir / f"similarity_{file_name}.pkl")
 
 
-def _similarity_only_one(
-    thr: float,
-    ind_i: int,
-    ind_j: int,
-    similarity_score: float,
-    correlation_dictionary: Dict,
+def node2vec(data: Data):
+    node2vec_res = Node2Vec(
+        edge_index=data.edge_index,
+        embedding_dim=EMBEDDING_DIM,
+        walk_length=WALK_LENGHT,
+        context_size=CONTEXT_SIZE,
+        walks_per_node=WALK_PER_NODE,
+        p=P,
+        q=Q,
+        sparse=SPARSE,
+    ).to(DEVICE)
+    pos, neg = node2vec_res.sample([10, 15])  # batch size
+    data.pos_edge_labels = torch.tensor(pos.T, device=DEVICE).long()
+    data.neg_edge_labels = torch.tensor(neg.T, device=DEVICE).long()
+    return data
+
+
+def random_walk_pos(data: Data) -> Tuple[Tensor, Tensor]:
+    pos_neighbors = defaultdict()
+    # neg_neighbors = defaultdict()
+    for node in data.edge_index[0]:
+        pos_nodes = []
+        for _ in range(WALK_PER_NODE):
+            cur_node = node
+            for _ in range(WALK_LENGHT):
+                neighbor_nodes = data.edge_index[1][data.edge_index[0] == cur_node]
+                next_node = random.choice(neighbor_nodes)
+                if next_node != node and next_node not in pos_nodes:
+                    pos_nodes.append(int(next_node))
+                cur_node = next_node
+        pos_neighbors[int(node)] = pos_nodes
+        # neg_neighbors[int(node)] = random_walk_neg(node, pos_nodes, data, cur_node)
+    return edge_index_from_dict(pos_neighbors)  # , edge_index_from_dict(neg_neighbors)
+
+
+def random_walk_neg(
+    node, pos_nodes: List, data: Data, cur_node, random_sample: int = 15
 ):
-    if similarity_score > thr:
-        correlation_dictionary[f"{ind_i}_{ind_j}"] = {
-            "Patient_1": ind_i,
-            "Patient_2": ind_j,
-            "link": 1,
-            "Similarity Score": similarity_score,
-        }
-
-
-def _similarity_zero_one(
-    thr: float,
-    ind_i: int,
-    ind_j: int,
-    similarity_score: float,
-    correlation_dictionary: Dict,
-):
-    correlation_dictionary[f"{ind_i}_{ind_j}"] = {
-        "Patient_1": ind_i,
-        "Patient_2": ind_j,
-        "link": 1 if similarity_score > thr else 0,
-        "Similarity Score": similarity_score,
-    }
-
-
-def _similarity_only_one_nx(
-    thr: float,
-    ind_i: int,
-    ind_j: int,
-    similarity_score: float,
-    correlation_dictionary: Dict,
-):
-    if similarity_score > thr:
-        correlation_dictionary["nodes"].append({"id": ind_i})
-        correlation_dictionary["links"].append({"source": ind_i, "target": ind_j})
-
-
-def select_generator(
-    func_name: str, thr: float
-) -> Union[_similarity_only_one, _similarity_zero_one, _similarity_only_one_nx]:
-    factory = {
-        "only_one": _similarity_only_one,
-        "zero_one": _similarity_zero_one,
-        "only_one_nx": _similarity_only_one_nx,
-    }
-    return partial(factory[func_name], thr)
+    walk_lenght_distance_nodes = set(
+        data.edge_index[1][data.edge_index[0] == cur_node].numpy()
+    )
+    frontier = walk_lenght_distance_nodes
+    neghibor = walk_lenght_distance_nodes
+    for _ in range(WALK_LENGHT):
+        cur_nodes = set()
+        for cur_node in frontier:
+            cur_nodes |= set(data.edge_index[1][data.edge_index[0] == cur_node].numpy())
+        frontier = cur_nodes.difference(neghibor)
+        neghibor |= cur_nodes
+    walk_lenght_distance_nodes = set(
+        data.edge_index[1][data.edge_index[0] == cur_node].numpy()
+    )
+    node_connections = set(data.edge_index[1][data.edge_index[0] == node].numpy())
+    node_connections.add(int(node))
+    final_neg_nodes = [
+        val
+        for val, key in Counter(
+            (*walk_lenght_distance_nodes, *neghibor, *node_connections, *pos_nodes)
+        ).items()
+        if key == 1
+    ]
+    return random.sample(final_neg_nodes, random_sample)
