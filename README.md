@@ -34,16 +34,17 @@
 2. Modify the required parameters in the .env file according to your preferences.
 3. Navigate to SUPREME_refactoring directory
 4. Run the following command to build the docker image with a specified tag name (e.g., "supreme")
-   ```
-   sudo docker build . -t "supreme"
+   ```shell script
+   sudo docker build . -t supreme
    ```
 5. Run docker container
-   ```
-   docker run
+   ```shell script
+   docker run supreme
    ```
 
 # Clean docker espace 
-   ```sudo docker container prune -f && sudo docker image prune -f && sudo docker system prune -a
+   ```shell script
+   sudo docker container prune -f && sudo docker image prune -f && sudo docker system prune -a
    ```
 
 # How to run locally.
